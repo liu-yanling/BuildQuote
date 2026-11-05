@@ -389,25 +389,44 @@ async function approveReport(action) {
   if (!INQUIRY.comparison) { document.getElementById('report-result').innerHTML = '<div class="empty">请先完成「做比价」生成比价结果。</div>'; return; }
   const reportId = document.getElementById('report-id').value.trim() || 'RPT-2026-001';
   const reviewer = { ...DEMO_USER, role: '成本经理' };
+  // 审核通过时把「人工确认后的报价明细」一并发给后端：服务端用规则引擎重算比价并固化成报告快照，
+  // 导出只认这份快照（前端传的数字不被采信）。
+  const report = {
+    inquiry_id: INQUIRY.inquiry_id || 'IQ-2026-001',
+    project_name: '江山云墅项目',
+    suppliers: INQUIRY.suppliers,
+    items: INQUIRY.quotes,
+    summary: ''
+  };
   setBusy('report-approve-btn', true, '提交中…');
-  const { ok, d } = await postJSON('/api/reports/approve', { report_id: reportId, action, reviewer });
+  const { ok, d } = await postJSON('/api/reports/approve', { report_id: reportId, action, reviewer, report });
   setBusy('report-approve-btn', false);
   if (!ok) { document.getElementById('report-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + '</div>'; return; }
   INQUIRY.report_id = reportId;
   INQUIRY.review_status = d.status;
   document.getElementById('report-result').innerHTML = '<div class="ok-box">✓ 报告 ' + esc(reportId) + ' 审核状态：<b>' + esc(d.status) + '</b>' +
-    (d.status === '审核通过' ? '。现在可导出报告。' : '（打回后需重新提交审核）') + '</div>';
+    (d.status === '审核通过'
+      ? '。已固化报告快照 <code>' + esc(d.snapshot_id || '—') + '</code>，现在可导出 PDF / Word。'
+      : '（打回后需重新提交审核）') + '</div>';
   updateStepper(5);
 }
 async function exportReport() {
   const reportId = document.getElementById('report-id').value.trim() || INQUIRY.report_id;
   if (!reportId) { document.getElementById('report-result').innerHTML = '<div class="empty">请先提交审核并填写报告编号。</div>'; return; }
   const reviewer = { ...DEMO_USER, role: '成本经理' };
-  setBusy('report-export-btn', true, '导出中…');
-  const { ok, d } = await postJSON('/api/reports/export', { report_id: reportId, format: '.pdf', reviewer });
+  const formatEl = document.getElementById('report-format');
+  const format = formatEl ? formatEl.value : '.pdf';
+  setBusy('report-export-btn', true, '生成文件中…');
+  const { ok, d } = await postJSON('/api/reports/export', { report_id: reportId, format, reviewer });
   setBusy('report-export-btn', false);
   if (!ok) { document.getElementById('report-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + '</div>'; return; }
-  document.getElementById('report-result').innerHTML = '<div class="ok-box">✓ 已生成导出记录：<code>' + esc(d.file) + '</code><br><span class="muted">' + esc(d.note || '') + '</span></div>';
+  const kb = (Number(d.size || 0) / 1024).toFixed(1);
+  const label = format === '.docx' ? 'Word' : 'PDF';
+  document.getElementById('report-result').innerHTML =
+    '<div class="ok-box">✓ 已生成真实报告文件：<b>' + esc(d.file) + '</b>（' + kb + ' KB · ' + label + '）<br>' +
+    '<a class="btn-mini" href="' + esc(d.download_url) + '" download style="margin-top:8px;display:inline-block">⬇ 下载 ' + label + '</a> ' +
+    '<a class="btn-mini" href="' + esc(d.download_url) + '" target="_blank" style="display:inline-block">在新标签打开</a><br>' +
+    '<span class="muted">' + esc(d.note || '') + '</span></div>';
 }
 function resetInquiry() {
   Object.assign(INQUIRY, { inquiry_id: '', suppliers: [], quotes: [], comparison: null, init_done: false });

@@ -199,6 +199,12 @@
         <div class="card-head"><b>⑤ 出报告</b><span class="muted">报告须经成本经理审核通过后方可导出</span></div>
         <div class="inq-form">
           <label class="fld">报告编号 <input id="report-id" type="text" placeholder="自动生成" value="RPT-2026-001"></label>
+          <label class="fld">导出格式
+            <select id="report-format">
+              <option value=".pdf" selected>PDF（.pdf）</option>
+              <option value=".docx">Word（.docx）</option>
+            </select>
+          </label>
         </div>
         <div class="row-actions">
           <button id="report-approve-btn" class="btn primary" onclick="approveReport('通过')">提交审核（通过）</button>

@@ -7,3 +7,7 @@ data/
 *.log
 .DS_Store
 inbox/
+# 运行态（询价任务 / 团队邮箱），不进版本库
+.tasks/
+.mailboxes/
+.worktrees/

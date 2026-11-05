@@ -69,6 +69,7 @@ app/
   vectorstore.py   # SQLite 向量库（余弦相似度）
   rag.py           # 多源切分 + 混合召回（向量+BM25）+ 引用治理
   eval.py          # 评测指标：预警覆盖率/准确率、召回准确率、引用可追溯率等
+  export.py        # 真实报告导出：审核快照 → .docx/.pdf（python-docx + reportlab）
   workflow.py      # s16 工作流运行时（询价五步）
   tasks.py         # s10 任务系统（含团队认领复用）
   background.py    # s11 后台任务
@@ -141,6 +142,21 @@ evals/             # 离线评测样例（V4）
 # 只看检索证据，不调模型
 .venv/bin/python -m app.qa "质保金" --no-model
 ```
+
+## 报告导出（硬化阶段 · 真实 .pdf/.docx）
+
+审核通过时后端用规则引擎重算并**固化报告快照**；导出只认这份快照，前端传的数字不被采信，
+每份报告带规则版本 + 计算快照 ID，可回溯报价明细。
+
+- `POST /api/reports/approve`：审核（通过 / 打回）。通过时附 `report.items`（人工确认后的报价明细），
+  后端重算比价并写入报告快照；打回只记录审核状态。
+- `POST /api/reports/export`：生成真实 `.pdf` / `.docx` 文件（须审核通过；门禁不变，模型仍 deny）。
+- `GET /api/reports/{report_id}/download?format=.pdf|.docx`：下载已生成文件（attachment）。
+
+前端「⑤ 出报告」卡片有格式下拉（PDF / Word），导出后直接给下载链接。
+
+实现：`app/export.py`（python-docx 生成 docx；reportlab + STSong-Light 生成中文 PDF；A4 横向）。
+文件落在 `data/exports/`（`data/` 已 gitignore）。新增依赖见 `requirements.txt`。
 
 ## 验证
 

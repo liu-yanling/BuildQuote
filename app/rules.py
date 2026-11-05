@@ -66,8 +66,8 @@ def compute_price_metrics(items: list[dict[str, Any]], config: dict[str, Any] | 
         if not unit or base_coef is None:
             rows.append({"supplier": it.get("supplier", ""), "material": it.get("material", ""),
                          "spec": it.get("spec", ""), "unit": unit, "unit_price": unit_price,
-                         "tax_rate": tax_rate, "freight": freight, "total": None,
-                         "price_with_tax": None, "base_unit_coefficient": None,
+                         "quantity": quantity, "tax_rate": tax_rate, "freight": freight,
+                         "total": None, "price_with_tax": None, "base_unit_coefficient": None,
                          "comparable": False, "missing_unit": True})
             continue
 
@@ -75,8 +75,9 @@ def compute_price_metrics(items: list[dict[str, Any]], config: dict[str, Any] | 
         total = round(price_with_tax * quantity + freight, 4)
         row = {"supplier": it.get("supplier", ""), "material": it.get("material", ""),
                "spec": it.get("spec", ""), "unit": unit, "unit_price": unit_price,
-               "tax_rate": tax_rate, "freight": freight, "price_with_tax": price_with_tax,
-               "total": total, "base_unit_coefficient": base_coef, "comparable": ok}
+               "quantity": quantity, "tax_rate": tax_rate, "freight": freight,
+               "price_with_tax": price_with_tax, "total": total,
+               "base_unit_coefficient": base_coef, "comparable": ok}
         if ok and ref_unit_price is not None:
             ref_with_tax = round(float(ref_unit_price) * (1 + tax_rate), 4)
             diff = round(price_with_tax - ref_with_tax, 4)

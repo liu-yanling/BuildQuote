@@ -10,12 +10,13 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import (cost_rules, cost_tools, eval as eval_mod, permissions, prompts,
-                 rules, scheduler, team as team_mod, tools, workflow)
+from app import (cost_rules, cost_tools, eval as eval_mod, export as export_mod,
+                 permissions, prompts, rules, scheduler, team as team_mod, tools,
+                 workflow)
 from app.agent_loop import Harness
 from app.config import load_settings
 from app.embeddings import make_embedder
@@ -33,6 +34,9 @@ settings = load_settings()
 store = Store(settings.db_path, settings.data_key)
 tasks = TaskStore()
 board = InquiryBoard(tasks)
+
+# 真实报告导出目录（.pdf/.docx 落盘；data/ 已被 .gitignore 忽略）
+_EXPORT_DIR = settings.db_path.parent / "exports"
 
 # V4 RAG：独立 embedding API（OpenAI 兼容；无 key 时本地确定性降级）+ SQLite 向量库
 embedder = make_embedder(settings)
@@ -201,6 +205,7 @@ class ApproveIn(BaseModel):
     action: str          # 通过 / 打回
     reviewer: dict[str, Any]
     project_id: str = ""
+    report: dict[str, Any] | None = None   # 报告快照素材（人工确认后的报价明细）；审核通过时固化
 
 
 @app.post("/api/reports/approve")
@@ -210,12 +215,22 @@ def approve_report(payload: ApproveIn) -> dict:
     if not ok:
         raise HTTPException(status_code=403, detail=reason)
     status = "审核通过" if payload.action == "通过" else "打回"
-    store.append(user.enterprise_id, payload.project_id, "reports", {
+    record: dict[str, Any] = {
         "report_id": payload.report_id, "review_status": status, "reviewer_role": user.role,
-        "reviewer": user.user_id, "reviewed_at": _now()})
+        "reviewer": user.user_id, "reviewed_at": _now()}
+    # 铁律：审核通过时把「人工确认后的报价明细」固化为报告快照，由服务端规则引擎重算比价；
+    # 导出只认这份快照，前端传什么数字都不采信。
+    if status == "审核通过" and payload.report:
+        try:
+            record.update(export_mod.make_report_snapshot(
+                payload.report, payload.report_id, payload.reviewer, reviewed_at=_now()))
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+    store.append(user.enterprise_id, payload.project_id, "reports", record)
     store.write_log(user.enterprise_id, payload.project_id, "approve_report",
                     {"actor": user.user_id, "report_id": payload.report_id, "action": payload.action})
-    return {"ok": True, "status": status}
+    return {"ok": True, "status": status, "has_snapshot": bool(record.get("comparison")),
+            "snapshot_id": record.get("snapshot_id")}
 
 
 class ExportIn(BaseModel):
@@ -231,17 +246,48 @@ def export_report(payload: ExportIn) -> dict:
     ok, reason = permissions.check_permission(user, "export_report", {"project_id": payload.project_id})
     if not ok:
         raise HTTPException(status_code=403, detail=reason)
-    if payload.format not in tools.EXPORT_FORMATS:
+    fmt = (payload.format or "").lower()
+    if fmt not in tools.EXPORT_FORMATS:
         raise HTTPException(status_code=400, detail=f"不支持的导出格式 {payload.format}")
     reports = store.query(user.enterprise_id, payload.project_id, "reports",
                           predicate=lambda r: r.get("report_id") == payload.report_id)
-    if not reports or not permissions.assert_report_reviewed(reports[0]):
+    reviewed = [r for r in reports if permissions.assert_report_reviewed(r)]
+    snapshots = [r for r in reviewed if r.get("comparison")]
+    if not snapshots:
+        if reviewed:
+            raise HTTPException(status_code=400,
+                                detail="报告内容快照缺失：请在提交审核时附带报价明细后重新审核")
         raise HTTPException(status_code=403, detail="报告未通过成本经理审核，不可导出")
+    snapshot = snapshots[-1]
+    try:
+        out = export_mod.export_report_file(snapshot, fmt, _EXPORT_DIR)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
     store.write_log(user.enterprise_id, payload.project_id, "export_report",
                     {"actor": user.user_id, "report_id": payload.report_id,
-                     "format": payload.format})
-    return {"ok": True, "file": f"{payload.report_id}{payload.format}",
-            "note": "骨架版返回导出记录；真实 .pdf/.docx 文件生成在硬化阶段接入组件"}
+                     "format": fmt, "file": out["file"], "size": out["size"]})
+    safe_id = export_mod.safe_report_id(payload.report_id)
+    return {"ok": True, "file": out["file"], "format": fmt, "size": out["size"],
+            "download_url": f"/api/reports/{safe_id}/download?format={fmt}",
+            "rule_version": snapshot.get("rule_version", ""),
+            "snapshot_id": snapshot.get("snapshot_id"),
+            "note": f"已生成真实 {fmt} 报告文件（规则引擎快照 {snapshot.get('snapshot_id') or '—'}）"}
+
+
+@app.get("/api/reports/{report_id}/download")
+def download_report(report_id: str, format: str = ".pdf"):
+    """下载已导出的报告文件。
+
+    MVP 单人使用：权限门禁在 POST /api/reports/export（成本经理 + 审核通过）；
+    本接口只负责把已生成的文件流式返回。
+    """
+    fmt = (format or "").lower()
+    if fmt not in tools.EXPORT_FORMATS:
+        raise HTTPException(status_code=400, detail=f"不支持的导出格式 {format}")
+    path = _EXPORT_DIR / f"{export_mod.safe_report_id(report_id)}{fmt}"
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="报告文件不存在，请先调用 /api/reports/export 导出")
+    return FileResponse(str(path), media_type=export_mod.MEDIA_TYPES[fmt], filename=path.name)
 
 
 # ---- 工作流 ----

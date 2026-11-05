@@ -8,3 +8,6 @@ pytest>=8.0
 openpyxl>=3.1
 fastembed>=0.4
 jieba>=0.42
+# 真实报告导出（硬化阶段）：.docx 生成 + .pdf 生成（含中文字体）
+python-docx>=1.1
+reportlab>=4.0

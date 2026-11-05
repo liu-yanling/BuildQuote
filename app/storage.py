@@ -16,7 +16,9 @@ from app.crypto import encrypt, decrypt
 
 # 需要加密落盘的敏感字段（报价、合同、企业价格相关）
 SENSITIVE_KEYS = {"unit_price", "total", "price_with_tax", "reference_price_with_tax",
-                  "quote_content", "contract_text", "enterprise_price", "quote"}
+                  "quote_content", "contract_text", "enterprise_price", "quote",
+                  # 真实报告导出新增：报告快照内含报价明细与比价结果，同样加密落盘
+                  "items", "comparison", "suppliers"}
 
 
 def _now() -> str:
