@@ -1,0 +1,10 @@
+{
+  "id": "task_34a6582b",
+  "subject": "[IQ-2026-001] 核口径",
+  "description": "询价单 IQ-2026-001 的「核口径」步骤",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_6e0b10be"
+  ]
+}

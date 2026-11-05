@@ -1,0 +1,250 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>BuildQuote · 成本监控工作台</title>
+<link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<div class="layout">
+  <aside class="sidebar">
+    <div class="brand">
+      <div class="brand-logo">BQ</div>
+      <div class="brand-name">BuildQuote<small>成本监控工作台</small></div>
+    </div>
+
+    <nav class="nav">
+      <a class="nav-item active" data-view="monitor" href="#monitor"><span class="ico">📊</span>成本监控</a>
+      <a class="nav-item" data-view="qa" href="#qa"><span class="ico">💬</span>合同问答</a>
+      <a class="nav-item" data-view="inquiry" href="#inquiry"><span class="ico">🧾</span>询价比价</a>
+      <a class="nav-item" data-view="eval" href="#eval"><span class="ico">📈</span>评测看板</a>
+    </nav>
+
+    <div class="sidebar-foot">
+      <div id="health" class="health"><span class="dot"></span>连接中…</div>
+      <div class="ver">v0.4.0 · 单进程单体</div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- ① 成本监控工作台 -->
+    <section id="view-monitor" class="view active">
+      <div class="page-head">
+        <div>
+          <h1>成本监控工作台</h1>
+          <p class="sub">预算 vs 实际 · 按科目归集 · 黄警 ≥5% / 红警 ≥10%（纯规则计算，不经模型）</p>
+        </div>
+        <div class="head-actions">
+          <label class="lbl">黄警 <input id="yellow" type="number" step="0.01" value="0.05"></label>
+          <label class="lbl">红警 <input id="red" type="number" step="0.01" value="0.10"></label>
+          <button class="btn ghost" onclick="loadSample()">加载样例</button>
+          <button id="monitor-btn" class="btn primary" onclick="runMonitor()">运行监控</button>
+        </div>
+      </div>
+
+      <div class="monitor-grid">
+        <div class="col inputs">
+          <div class="card">
+            <div class="card-head"><b>预算（万元）</b><button class="btn-mini" onclick="addBudgetRow()">+ 加一行</button></div>
+            <table class="editable">
+              <thead><tr><th>科目</th><th style="width:120px">预算金额</th><th style="width:56px"></th></tr></thead>
+              <tbody id="budget-tbody"></tbody>
+            </table>
+          </div>
+          <div class="card">
+            <div class="card-head"><b>成本来源（实际发生）</b><button class="btn-mini" onclick="addSourceRow()">+ 加一行</button></div>
+            <table class="editable">
+              <thead><tr><th>来源类型</th><th>科目 / 别名</th><th style="width:110px">金额</th><th style="width:90px">来源ID</th><th style="width:56px"></th></tr></thead>
+              <tbody id="source-tbody"></tbody>
+            </table>
+            <p class="hint">科目可用别名：劳务→人工费、钢材/商品混凝土→材料费、措施费→其他直接费、现场经费→现场管理费 等</p>
+          </div>
+        </div>
+
+        <div class="col results" id="monitor-result">
+          <div class="empty">左侧填好预算与成本来源后，点「运行监控」查看归集台账与预警。</div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ② 合同知识问答 -->
+    <section id="view-qa" class="view">
+      <div class="page-head">
+        <div>
+          <h1>合同知识问答</h1>
+          <p class="sub">80 份合同已入向量库 · DeepSeek 依据原文带引用作答 · 无依据时明说「未提及」</p>
+        </div>
+      </div>
+
+      <div class="qa-grid">
+        <div class="card chat-card">
+          <div class="card-head"><b>问答</b><span class="muted" id="qa-status"></span></div>
+          <div id="chat" class="chat"></div>
+          <div class="chat-input">
+            <textarea id="qa-input" rows="2" placeholder="例如：钢材采购合同怎么付款、质保金怎么退？（回车发送，Shift+回车换行）" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ask()}"></textarea>
+            <button class="btn primary" onclick="ask()">提问</button>
+          </div>
+        </div>
+
+        <div class="card search-card">
+          <div class="card-head"><b>知识检索</b><span class="muted">只查依据，不调模型</span></div>
+          <div class="search-box">
+            <input id="search-input" type="text" placeholder="例如：质保金怎么退" onkeydown="if(event.key==='Enter')search()">
+            <button class="btn ghost" onclick="search()">检索</button>
+          </div>
+          <div id="search-status" class="muted" style="min-height:18px"></div>
+          <div id="hits" class="hits"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ③ 询价比价五步 -->
+    <section id="view-inquiry" class="view">
+      <div class="page-head">
+        <div>
+          <h1>询价比价 · 五步闭环</h1>
+          <p class="sub">建需求 → 收报价 → 核口径 → 做比价 → 出报告（数字一律走规则引擎，不经模型）</p>
+        </div>
+        <button class="btn ghost" onclick="resetInquiry()">清空重来</button>
+      </div>
+
+      <div class="stepper" id="inq-stepper">
+        <div class="step done" data-step="1"><span class="s-num">1</span><span class="s-label">建需求</span></div>
+        <div class="step" data-step="2"><span class="s-num">2</span><span class="s-label">收报价</span></div>
+        <div class="step" data-step="3"><span class="s-num">3</span><span class="s-label">核口径</span></div>
+        <div class="step" data-step="4"><span class="s-num">4</span><span class="s-label">做比价</span></div>
+        <div class="step" data-step="5"><span class="s-num">5</span><span class="s-label">出报告</span></div>
+      </div>
+
+      <!-- ① 建需求 -->
+      <div class="card">
+        <div class="card-head"><b>① 建需求</b><span class="muted">一次询价至少 3 家供应商</span></div>
+        <div class="inq-form">
+          <label class="fld">询价单号 <input id="inq-id" type="text" placeholder="如 IQ-2026-001" value="IQ-2026-001"></label>
+          <label class="fld">截止日期 <input id="inq-deadline" type="text" placeholder="如 2026-11-20"></label>
+        </div>
+        <div class="card-head" style="margin-top:14px"><b>供应商</b><span class="muted">回车或点「+ 加供应商」添加</span></div>
+        <div class="supplier-add">
+          <input id="inq-supplier-input" type="text" placeholder="供应商名称，如：四川钢材商贸有限公司"
+                 onkeydown="if(event.key==='Enter'){addSupplier()}">
+          <button class="btn ghost" onclick="addSupplier()">+ 加供应商</button>
+        </div>
+        <div id="supplier-list" class="supplier-list"></div>
+        <div style="margin-top:14px">
+          <button id="init-inquiry-btn" class="btn primary" onclick="initInquiry()">初始化询价单</button>
+        </div>
+        <div id="inq-init-result" class="result-box"></div>
+      </div>
+
+      <!-- ② 收报价 -->
+      <div class="card">
+        <div class="card-head"><b>② 收报价</b><button class="btn-mini" onclick="addQuoteRow()">+ 加报价行</button></div>
+        <table class="editable quote-table">
+          <thead><tr>
+            <th>供应商</th><th>材料</th><th>规格</th><th>单位</th>
+            <th style="width:96px">含税单价</th><th style="width:76px">数量</th>
+            <th style="width:70px">税率</th><th style="width:70px">运费</th><th style="width:48px"></th>
+          </tr></thead>
+          <tbody id="quote-tbody"></tbody>
+        </table>
+        <p class="hint">单位填 kg / 吨 / 米 / 根 / m³；税率填小数（13% 填 0.13）；运费为单笔含税金额。</p>
+        <div class="row-actions">
+          <button id="save-quotes-btn" class="btn primary" onclick="saveQuotes()">保存报价（内部代录）</button>
+          <button class="btn ghost" onclick="loadQuoteSample()">加载样例报价</button>
+        </div>
+        <div id="quote-save-result" class="result-box"></div>
+
+        <div class="divider"></div>
+        <div class="card-head"><b>或：粘贴报价文本解析</b><span class="muted">启发式提取候选字段，仅供确认</span></div>
+        <div class="inq-form">
+          <label class="fld">供应商 <input id="parse-supplier" type="text" placeholder="供应商名称"></label>
+          <label class="fld">格式
+            <select id="parse-format">
+              <option value=".md" selected>.md</option>
+              <option value=".xlsx">.xlsx</option>
+              <option value=".pdf">.pdf</option>
+              <option value=".docx">.docx</option>
+            </select>
+          </label>
+        </div>
+        <textarea id="parse-text" class="parse-text" rows="4" placeholder="粘贴报价文本，例如：&#10;材料：螺纹钢  规格：HRB400 Φ20  单位：吨  含税单价：3580  税率：13%  运费：200"></textarea>
+        <div class="row-actions"><button id="parse-btn" class="btn ghost" onclick="parseQuote()">解析报价</button></div>
+        <div id="parse-result" class="result-box"></div>
+      </div>
+
+      <!-- ③ 核口径 -->
+      <div class="card">
+        <div class="card-head"><b>③ 核口径</b><span class="muted" id="confirm-status">单位 / 税率 / 运费口径一致性自动检查</span></div>
+        <div id="confirm-preview" class="empty">保存报价后，这里预览待确认字段与口径一致性。</div>
+      </div>
+
+      <!-- ④ 做比价 -->
+      <div class="card">
+        <div class="card-head"><b>④ 做比价</b><span class="muted">少于 3 家 / 3 份不进入比价；数字走规则引擎</span></div>
+        <div class="inq-form">
+          <label class="fld">参考价检索 <input id="ref-input" type="text" placeholder="如：螺纹钢 HRB400" onkeydown="if(event.key==='Enter')searchRef()"></label>
+          <button class="btn ghost" onclick="searchRef()">查参考价</button>
+        </div>
+        <div id="ref-result" class="result-box"></div>
+        <div class="row-actions" style="margin-top:8px">
+          <button id="compute-btn" class="btn primary" onclick="computeComparison()">运行规则引擎比价</button>
+        </div>
+        <div id="compute-result" class="result-box"></div>
+      </div>
+
+      <!-- ⑤ 出报告 -->
+      <div class="card">
+        <div class="card-head"><b>⑤ 出报告</b><span class="muted">报告须经成本经理审核通过后方可导出</span></div>
+        <div class="inq-form">
+          <label class="fld">报告编号 <input id="report-id" type="text" placeholder="自动生成" value="RPT-2026-001"></label>
+        </div>
+        <div class="row-actions">
+          <button id="report-approve-btn" class="btn primary" onclick="approveReport('通过')">提交审核（通过）</button>
+          <button class="btn ghost" onclick="approveReport('打回')">打回</button>
+          <button id="report-export-btn" class="btn ghost" onclick="exportReport()">导出报告</button>
+        </div>
+        <div id="report-result" class="result-box"></div>
+      </div>
+    </section>
+
+    <!-- ④ 评测看板 -->
+    <section id="view-eval" class="view">
+      <div class="page-head">
+        <div>
+          <h1>评测看板</h1>
+          <p class="sub">预警覆盖率 / 召回准确率 / 引用可追溯率 / 回答准确率</p>
+        </div>
+      </div>
+
+      <div class="eval-grid">
+        <div class="card">
+          <div class="card-head"><b>离线评测指标</b><span class="muted">编辑样例 JSON → 运行评测</span></div>
+          <textarea id="eval-samples" class="parse-text" rows="16" spellcheck="false"></textarea>
+          <div class="row-actions">
+            <button class="btn ghost" onclick="loadEvalSample()">加载样例</button>
+            <button id="eval-run-btn" class="btn primary" onclick="runEval()">运行评测</button>
+          </div>
+          <div id="eval-result" class="result-box"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><b>QA 金标准评测（12 题）</b><span class="muted">问题 → 应命中合同</span></div>
+          <p class="hint">「检索召回评测」不调模型，走 /api/knowledge/search 看 top-5 是否命中应命中合同；「问答实跑评测」调 DeepSeek 走完整问答并核对引用。</p>
+          <div class="row-actions">
+            <button id="eval-retrieval-btn" class="btn primary" onclick="runRetrievalEval()">检索召回评测</button>
+            <button id="eval-qa-btn" class="btn ghost" onclick="runQaEval()">问答实跑评测（慢）</button>
+          </div>
+          <div id="eval-qa-status" class="muted" style="min-height:18px"></div>
+          <div id="qa-gold-table" class="gold-table"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

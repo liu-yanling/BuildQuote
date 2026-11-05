@@ -1,0 +1,10 @@
+{
+  "id": "task_0f52c950",
+  "subject": "[IQ-2026-001] 收报价：绵阳金属材料",
+  "description": "收集供应商 绵阳金属材料 的报价",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_58ff8ae0"
+  ]
+}

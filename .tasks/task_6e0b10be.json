@@ -1,0 +1,13 @@
+{
+  "id": "task_6e0b10be",
+  "subject": "[IQ-2026-001] 收报价",
+  "description": "询价单 IQ-2026-001 的「收报价」步骤",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_58ff8ae0",
+    "task_87ec1ad6",
+    "task_c93862d9",
+    "task_0f52c950"
+  ]
+}

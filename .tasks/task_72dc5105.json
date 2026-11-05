@@ -1,0 +1,10 @@
+{
+  "id": "task_72dc5105",
+  "subject": "[IQ-TEST] 收报价：A",
+  "description": "收集供应商 A 的报价",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_fb5e9df2"
+  ]
+}

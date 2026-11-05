@@ -1,0 +1,13 @@
+{
+  "id": "task_4a61476b",
+  "subject": "[IQ-TEST] 收报价",
+  "description": "询价单 IQ-TEST 的「收报价」步骤",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_fb5e9df2",
+    "task_72dc5105",
+    "task_aba944d7",
+    "task_3d644ec0"
+  ]
+}

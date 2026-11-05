@@ -1,0 +1,18 @@
+{
+  "alerts": {
+    "predicted": ["建筑工程费", "安装工程费", "预备费"],
+    "gold": ["建筑工程费", "安装工程费", "工程建设其他费"]
+  },
+  "retrieval": {
+    "predicted": ["src1#0-10", "src2#0-20", "src3#0-30"],
+    "gold": ["src2#0-20", "src3#0-30"]
+  },
+  "answers": [
+    {"citation": "[src1#0-10]"},
+    {"citation": ""}
+  ],
+  "answer_accuracy": {
+    "predicted": ["建筑工程费", "安装工程费"],
+    "gold": ["建筑工程费", "安装工程费"]
+  }
+}

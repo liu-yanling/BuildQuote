@@ -1,0 +1,10 @@
+{
+  "id": "task_611ee070",
+  "subject": "[IQ-TEST] 核口径",
+  "description": "询价单 IQ-TEST 的「核口径」步骤",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_4a61476b"
+  ]
+}

@@ -1,0 +1,10 @@
+{
+  "id": "task_3c122b72",
+  "subject": "[IQ-2026-001] 出报告",
+  "description": "询价单 IQ-2026-001 的「出报告」步骤",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_9871018e"
+  ]
+}

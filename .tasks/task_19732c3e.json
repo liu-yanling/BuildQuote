@@ -1,0 +1,10 @@
+{
+  "id": "task_19732c3e",
+  "subject": "[IQ-TEST] 做比价",
+  "description": "询价单 IQ-TEST 的「做比价」步骤",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_611ee070"
+  ]
+}

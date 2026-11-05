@@ -1,0 +1,10 @@
+{
+  "id": "task_3e93fe59",
+  "subject": "[IQ-TEST] 出报告",
+  "description": "询价单 IQ-TEST 的「出报告」步骤",
+  "status": "pending",
+  "owner": null,
+  "blockedBy": [
+    "task_19732c3e"
+  ]
+}
