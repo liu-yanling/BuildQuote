@@ -6,6 +6,7 @@ from __future__ import annotations
 
 import json
 import logging
+import threading
 import time
 from pathlib import Path
 from typing import Any
@@ -499,31 +500,55 @@ def eval_run(payload: EvalIn) -> dict:
     return eval_mod.run_eval(payload.samples)
 
 
-# ---- 评测看板：指标持久化 + 扩展金标准批量检索评测（v0.5.3） ----
+# ---- 评测看板：指标持久化 + 历史趋势 + 批量检索评测（v0.8.0） ----
 _ROOT = Path(__file__).resolve().parent.parent
 _EVAL_LAST = settings.db_path.parent / "eval_last.json"
+_EVAL_HISTORY = settings.db_path.parent / "eval_history.json"
 _GOLD_LARGE = _ROOT / "evals" / "qa_gold_large.json"
+_EVAL_KEYS = {"retrieval", "qa", "alertCoverage", "alertPrecision", "citation"}
+_EVAL_LOCK = threading.Lock()
+_EVAL_HISTORY_MAX = 30
 
 
-def _read_eval_last() -> dict:
+def _read_json(path: Path) -> dict:
     try:
-        return json.loads(_EVAL_LAST.read_text(encoding="utf-8"))
+        return json.loads(path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return {}
 
 
-def _write_eval_last(key: str, data: dict) -> dict:
-    record = _read_eval_last()
-    record[key] = {**data, "at": _now()}
-    _EVAL_LAST.parent.mkdir(parents=True, exist_ok=True)
-    _EVAL_LAST.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
-    return record
+def _read_eval_last() -> dict:
+    return _read_json(_EVAL_LAST)
+
+
+def _read_eval_history() -> dict:
+    return _read_json(_EVAL_HISTORY)
+
+
+def _write_eval(key: str, data: dict, *, demo: bool = False, at: str | None = None) -> dict:
+    """同一把锁内原子写「上次结果 + 历史点」，避免并发请求互相覆盖。"""
+    now = at or _now()
+    with _EVAL_LOCK:
+        last = _read_eval_last()
+        history = _read_eval_history()
+        rec = {**data, "at": now}
+        if demo:
+            rec["demo"] = True
+        last[key] = rec
+        points = list(history.get(key, []))
+        points.append({"value": data.get("value"), "at": now})
+        history[key] = points[-_EVAL_HISTORY_MAX:]
+        _EVAL_LAST.parent.mkdir(parents=True, exist_ok=True)
+        _EVAL_LAST.write_text(json.dumps(last, ensure_ascii=False, indent=1), encoding="utf-8")
+        _EVAL_HISTORY.write_text(json.dumps(history, ensure_ascii=False, indent=1), encoding="utf-8")
+    return {"results": last, "history": history}
 
 
 @app.get("/api/eval/last")
 def eval_last() -> dict:
-    """返回上次评测结果（页面刷新后指标卡仍有数据）。"""
-    return {"ok": True, "results": _read_eval_last()}
+    """上次评测结果 + 每个指标的历史趋势点（刷新后指标卡和曲线仍有数据）。"""
+    with _EVAL_LOCK:
+        return {"ok": True, "results": _read_eval_last(), "history": _read_eval_history()}
 
 
 class EvalRecordIn(BaseModel):
@@ -533,11 +558,34 @@ class EvalRecordIn(BaseModel):
 
 @app.post("/api/eval/record")
 def eval_record(payload: EvalRecordIn) -> dict:
-    """前端跑完问答/样例评测后，把指标持久化到 data/eval_last.json。"""
-    if payload.key not in {"retrieval", "qa", "alertCoverage", "alertPrecision", "citation"}:
+    """前端跑完问答/样例评测后写入指标（自动追加历史点）。"""
+    if payload.key not in _EVAL_KEYS:
         raise HTTPException(status_code=400, detail="未知评测指标")
-    record = _write_eval_last(payload.key, payload.data)
-    return {"ok": True, "results": record}
+    return {"ok": True, **_write_eval(payload.key, payload.data)}
+
+
+# 演示数据：没有真实数据时也能一键看到完整看板（会标注「演示数据」）
+_DEMO_SERIES = {
+    "retrieval": [0.92, 0.94, 0.94, 0.96, 0.96],
+    "qa": [1.0, 1.0, 0.9167, 1.0, 1.0],
+    "alertCoverage": [0.6667, 0.8, 0.6667, 0.6667],
+    "alertPrecision": [0.8, 0.6667, 0.6667, 0.6667],
+    "citation": [0.5, 0.5, 0.5, 0.5],
+}
+
+
+@app.post("/api/eval/seed-demo")
+def eval_seed_demo() -> dict:
+    """一键写入演示评测数据（5 个历史点/指标），用于没有真实数据时展示看板。"""
+    from datetime import datetime, timedelta
+
+    now = datetime.now()
+    result: dict = {}
+    for key, series in _DEMO_SERIES.items():
+        for i, value in enumerate(series):
+            at = (now - timedelta(hours=(len(series) - 1 - i) * 6)).strftime("%Y-%m-%dT%H:%M:%S")
+            result = _write_eval(key, {"value": value}, demo=True, at=at)
+    return {"ok": True, **result, "demo": True}
 
 
 class EvalRetrievalIn(BaseModel):
@@ -556,7 +604,7 @@ def _hit_contract(hits: list[dict], contract: str) -> bool:
 
 @app.post("/api/eval/retrieval")
 def eval_retrieval(payload: EvalRetrievalIn) -> dict:
-    """批量检索评测：用扩展金标准集跑 top-k 召回，返回命中率并持久化。"""
+    """批量检索评测：用精简金标准集（50 题）跑 top-k 召回，返回命中率并持久化。"""
     try:
         gold = json.loads(_GOLD_LARGE.read_text(encoding="utf-8")).get("samples", [])
     except (OSError, ValueError) as exc:
@@ -569,8 +617,8 @@ def eval_retrieval(payload: EvalRetrievalIn) -> dict:
         if _hit_contract(hits, item["contract"]):
             hit += 1
     value = round(hit / len(gold), 4)
-    record = _write_eval_last("retrieval", {"value": value, "hit": hit, "total": len(gold)})
-    return {"ok": True, "value": value, "hit": hit, "total": len(gold), "results": record}
+    payload_out = _write_eval("retrieval", {"value": value, "hit": hit, "total": len(gold)})
+    return {"ok": True, "value": value, "hit": hit, "total": len(gold), **payload_out}
 
 
 class QaAskIn(BaseModel):

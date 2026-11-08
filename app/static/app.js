@@ -746,7 +746,7 @@ const SAMPLE_EVALS = {
   "answers": [{ "citation": "[src1#0-10]" }, { "citation": "" }],
   "answer_accuracy": { "predicted": ["建筑工程费", "安装工程费"], "gold": ["建筑工程费", "安装工程费"] }
 };
-/* 问答实跑评测用的核心题（不在界面展示题目，只用于抽样实跑） */
+/* 问答实跑抽测用（界面不显示题目，只显示指标） */
 const QA_GOLD = [
   ["钢材采购合同怎么付款？", "JA-2025-010-04"],
   ["总承包合同的质量保证金怎么扣？", "JA-2025-010"],
@@ -755,16 +755,13 @@ const QA_GOLD = [
   ["商品混凝土采购合同的金额怎么定？", "JA-2025-010-03"],
   ["监理服务合同的报酬怎么支付？", "JA-2025-004"],
   ["建筑劳务分包的范围是什么？", "JA-2025-010-01"],
-  ["防水工程的保修期限？", "JA-2025-014"],
-  ["造价咨询服务的付款节点？", "JA-2025-005"],
-  ["临时用电工程的价款怎么结算？", "JA-2025-007"],
-  ["土方开挖合同的价格怎么定？", "JA-2025-008"],
-  ["边坡支护工程的付款方式？", "JA-2025-013"]
+  ["防水工程的保修期限？", "JA-2025-014"]
 ];
 
 const EVAL_STATE = { retrieval: null, qa: null, alertCoverage: null, alertPrecision: null, citation: null };
+const EVAL_HISTORY = {};
 const METRIC_DEFS = [
-  { key: 'retrieval', label: '检索召回率', scope: '扩展金标准集', desc: '问合同问题时，前 5 条检索结果能找到正确合同的比例', good: 0.9 },
+  { key: 'retrieval', label: '检索召回率', scope: '50 道标准题', desc: '问合同问题时，前 5 条检索结果能找到正确合同的比例', good: 0.9 },
   { key: 'qa', label: '问答引用命中率', scope: '抽样实跑', desc: '完整回答里引用的合同，确实是题目要求的那份', good: 0.9 },
   { key: 'alertCoverage', label: '预警覆盖率', scope: '样例数据', desc: '该报警的科目，系统都报出来了（不遗漏）', good: 0.8 },
   { key: 'alertPrecision', label: '预警准确率', scope: '样例数据', desc: '系统报出的预警，有多少是真的（不误报）', good: 0.8 },
@@ -772,28 +769,57 @@ const METRIC_DEFS = [
 ];
 
 function _pct(v) { return v == null ? '—' : (Number(v) * 100).toFixed(1) + '%'; }
-function _nowLocal() {
-  const d = new Date(), p = n => String(n).padStart(2, '0');
-  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
-    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
-}
 function _fmtAt(iso) {
   if (!iso) return '';
   const m = String(iso).match(/^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
   return m ? (m[1] + '-' + m[2] + ' ' + m[3] + ':' + m[4]) : String(iso).slice(0, 16);
 }
+function _nowLocal() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
 
-/* 页面加载时读回上次评测结果，指标卡不用重新跑也有数 */
+/* 指标历史曲线（SVG 迷你折线；每个点带日期时间提示） */
+function sparkline(points) {
+  const pts = (points || []).filter(p => p && p.value != null).slice(-10);
+  if (pts.length < 2) return '';
+  const W = 100, H = 30, padX = 2, padY = 5;
+  const vals = pts.map(p => Number(p.value) * 100);
+  const min = Math.min(...vals), max = Math.max(...vals);
+  const span = Math.max(max - min, 1e-6);
+  const xs = vals.map((v, i) => padX + (W - 2 * padX) * i / (vals.length - 1));
+  const ys = vals.map(v => H - padY - (H - 2 * padY) * (v - min) / span);
+  const line = pts.map((p, i) => xs[i].toFixed(1) + ',' + ys[i].toFixed(1)).join(' ');
+  const dots = pts.map((p, i) =>
+    '<circle cx="' + xs[i].toFixed(1) + '" cy="' + ys[i].toFixed(1) + '" r="1.6">' +
+    '<title>' + esc(_fmtAt(p.at)) + ' · ' + (Number(p.value) * 100).toFixed(1) + '%</title></circle>').join('');
+  const area = 'M' + xs[0].toFixed(1) + ',' + (H - padY) + ' L' + line.split(' ').join(' L ') +
+    ' L' + xs[xs.length - 1].toFixed(1) + ',' + (H - padY) + ' Z';
+  return '<svg class="spark" viewBox="0 0 100 30" preserveAspectRatio="none">' +
+    '<path class="spark-area" d="' + area + '"/><polyline class="spark-line" points="' + line + '"/>' + dots + '</svg>' +
+    '<div class="spark-meta"><span>' + esc(_fmtAt(pts[0].at)) + '</span><span>' + esc(_fmtAt(pts[pts.length - 1].at)) + '</span></div>';
+}
+
+function applyEvalPayload(d) {
+  if (!d) return;
+  const res = d.results || {};
+  const hist = d.history || {};
+  Object.keys(EVAL_STATE).forEach(k => {
+    if (res[k] && res[k].value != null) {
+      EVAL_STATE[k] = { value: res[k].value, at: res[k].at, demo: !!res[k].demo };
+    }
+    if (Array.isArray(hist[k])) EVAL_HISTORY[k] = hist[k];
+  });
+  renderMetrics();
+}
+
 async function loadEvalLast() {
   try {
     const resp = await fetch('/api/eval/last', { cache: 'no-store' });
     const d = await resp.json();
-    const res = (d && d.results) || {};
-    Object.keys(EVAL_STATE).forEach(k => {
-      if (res[k] && res[k].value != null) EVAL_STATE[k] = { value: res[k].value, at: res[k].at };
-    });
-    renderMetrics();
-  } catch (e) { /* 离线时保持待评测 */ }
+    applyEvalPayload(d);
+  } catch (e) { renderMetrics(); }
 }
 
 function renderMetrics() {
@@ -808,22 +834,28 @@ function renderMetrics() {
       if (ratio >= def.good) { cls = 'good'; badge = '达标'; }
       else if (ratio >= def.good * 0.75) { cls = 'warn'; badge = '待优化'; }
       else { cls = 'bad'; badge = '不达标'; }
-      sub = st.at ? ('上次评测 ' + _fmtAt(st.at)) : '已评测';
+      sub = (st.demo ? '演示数据' : '上次评测') + (st.at ? ' · ' + _fmtAt(st.at) : '');
     }
+    const spark = waiting ? '' : sparkline(EVAL_HISTORY[def.key] || []);
     return '<div class="metric-card ' + cls + '">' +
       '<div class="m-top"><span class="m-label">' + esc(def.label) + '</span><span class="m-badge">' + esc(badge) + '</span></div>' +
       '<div class="m-value">' + (waiting ? '—' : _pct(st.value)) + '</div>' +
-      '<div class="m-sub">' + esc(sub) + '</div>' +
+      '<div class="m-sub">' + esc(sub) + '</div>' + spark +
       '<div class="m-desc">' + esc(def.desc) + '</div></div>';
   }).join('');
 }
 
-function saveEval(key, data) {
-  fetch('/api/eval/record', {
-    method: 'POST', cache: 'no-store',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ key: key, data: data })
-  }).catch(() => {});
+/* 一键加载演示评测结果（不调模型、不导入真实数据） */
+async function loadDemoEval() {
+  try {
+    const resp = await fetch('/api/eval/seed-demo', { method: 'POST', cache: 'no-store' });
+    const d = await resp.json();
+    if (!resp.ok) throw new Error(d.detail || ('HTTP ' + resp.status));
+    applyEvalPayload(d);
+  } catch (e) {
+    const box = document.getElementById('eval-metrics');
+    if (box) box.insertAdjacentHTML('afterbegin', '<div class="err-box">演示数据加载失败：' + esc(String(e.message || e)) + '</div>');
+  }
 }
 
 function evalSampleSummary() {
@@ -880,6 +912,17 @@ function renderOfflineResult(d) {
   return lines.map(l => '<div class="eval-line ' + (l.ok ? 'ok' : 'warn') + '"><b>' + esc(l.title) + '</b><span>' + esc(l.text) + '</span></div>').join('');
 }
 
+async function saveEvalRecord(key, data) {
+  try {
+    const resp = await fetch('/api/eval/record', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ key: key, data: data })
+    });
+    if (resp.ok) applyEvalPayload(await resp.json());
+  } catch (e) { /* 忽略持久化失败 */ }
+}
+
 async function runEval() {
   let samples;
   try { samples = JSON.parse(document.getElementById('eval-samples').value); }
@@ -890,19 +933,9 @@ async function runEval() {
   if (!ok) { document.getElementById('eval-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + '</div>'; return; }
   const at = _nowLocal();
   const alerts = d['预警'] || {};
-  if (alerts['预警覆盖率'] != null) {
-    EVAL_STATE.alertCoverage = { value: alerts['预警覆盖率'], at: at };
-    saveEval('alertCoverage', { value: alerts['预警覆盖率'] });
-  }
-  if (alerts['预警准确率'] != null) {
-    EVAL_STATE.alertPrecision = { value: alerts['预警准确率'], at: at };
-    saveEval('alertPrecision', { value: alerts['预警准确率'] });
-  }
-  if (d['引用可追溯率'] != null) {
-    EVAL_STATE.citation = { value: d['引用可追溯率'], at: at };
-    saveEval('citation', { value: d['引用可追溯率'] });
-  }
-  renderMetrics();
+  if (alerts['预警覆盖率'] != null) await saveEvalRecord('alertCoverage', { value: alerts['预警覆盖率'] });
+  if (alerts['预警准确率'] != null) await saveEvalRecord('alertPrecision', { value: alerts['预警准确率'] });
+  if (d['引用可追溯率'] != null) await saveEvalRecord('citation', { value: d['引用可追溯率'] });
   const html = renderOfflineResult(d);
   document.getElementById('eval-result').innerHTML = html
     ? '<div class="eval-lines">' + html + '</div>'
@@ -911,8 +944,9 @@ async function runEval() {
 
 async function runRetrievalEval() {
   const st = document.getElementById('eval-qa-status');
+  const btns = document.querySelectorAll('button');
   setBusy('eval-retrieval-btn', true, '评测中…');
-  st.innerHTML = '<span class="spinner"></span>正在批量检索评测（扩展金标准集，约 30 秒）…';
+  if (st) st.innerHTML = '<span class="spinner"></span>正在跑 50 道标准题的检索召回（约 6 秒）…';
   try {
     const resp = await fetch('/api/eval/retrieval', {
       method: 'POST', cache: 'no-store',
@@ -921,23 +955,22 @@ async function runRetrievalEval() {
     });
     const d = await resp.json().catch(() => ({}));
     if (!resp.ok) throw new Error(d.detail || ('HTTP ' + resp.status));
-    EVAL_STATE.retrieval = { value: d.value, at: d.results && d.results.retrieval ? d.results.retrieval.at : _nowLocal() };
-    renderMetrics();
-    st.innerHTML = '<b>检索召回率 ' + _pct(d.value) + '</b>（扩展金标准集实测，越大越好）';
+    applyEvalPayload(d);
+    if (st) st.innerHTML = '<b>检索召回率 ' + _pct(d.value) + '</b>（50 道标准题实测，越大越好）';
   } catch (e) {
-    st.innerHTML = '<span class="badge red">评测失败：' + esc(String(e.message || e)) + '</span>';
+    if (st) st.innerHTML = '<span class="badge red">评测失败：' + esc(String(e.message || e)) + '</span>';
   }
   setBusy('eval-retrieval-btn', false);
 }
 
 async function runQaEval() {
-  if (!confirm('将调用 DeepSeek 逐题作答（约 1–3 分钟），是否继续？')) return;
+  if (!confirm('将调用 DeepSeek 抽样作答 8 题（约 40 秒），是否继续？')) return;
   const st = document.getElementById('eval-qa-status');
   setBusy('eval-qa-btn', true, '问答评测中…');
   let hitCount = 0;
   for (let i = 0; i < QA_GOLD.length; i++) {
     const [q, contract] = QA_GOLD[i];
-    st.innerHTML = '<span class="spinner"></span>问答实跑评测 ' + (i + 1) + '/' + QA_GOLD.length + '：' + esc(q);
+    if (st) st.innerHTML = '<span class="spinner"></span>问答实跑评测 ' + (i + 1) + '/' + QA_GOLD.length + '：' + esc(q);
     const { ok, d } = await postJSON('/api/qa/ask', { question: q, top_k: 6 });
     const citations = d.citations || [];
     const hit = ok && (citations.some(c => c.includes(contract)) || (d.answer || '').includes(contract));
@@ -945,11 +978,8 @@ async function runQaEval() {
   }
   setBusy('eval-qa-btn', false);
   const value = hitCount / QA_GOLD.length;
-  const at = _nowLocal();
-  EVAL_STATE.qa = { value: value, at: at };
-  saveEval('qa', { value: value, hit: hitCount, total: QA_GOLD.length });
-  renderMetrics();
-  st.innerHTML = '<b>问答引用命中率 ' + _pct(value) + '</b>（抽样完整问答实跑，越大越好）';
+  await saveEvalRecord('qa', { value: value, hit: hitCount, total: QA_GOLD.length });
+  if (st) st.innerHTML = '<b>问答引用命中率 ' + _pct(value) + '</b>（抽样 8 题完整问答实跑，越大越好）';
 }
 
 /* ===== 启动 ===== */

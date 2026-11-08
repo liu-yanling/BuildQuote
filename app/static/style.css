@@ -246,3 +246,18 @@ table.result tr:last-child td{border-bottom:none}
 
 .gold-table{margin-top:12px;max-height:56vh;overflow-y:auto}
 .gold-table .mono{font-family:ui-monospace,monospace;font-size:12px;color:var(--primary)}
+
+/* 评测工具条 + 指标趋势迷你图 */
+.eval-toolbar{display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;margin-bottom:12px}
+.eval-toolbar .row-actions{display:flex;gap:8px;flex-wrap:wrap}
+.spark{width:100%;height:34px;margin-top:6px;display:block;overflow:visible}
+.spark-line{fill:none;stroke:#16a34a;stroke-width:1.8;vector-effect:non-scaling-stroke}
+.spark-area{fill:rgba(22,163,74,.10);stroke:none}
+.spark circle{fill:#16a34a;stroke:#fff;stroke-width:.8}
+.spark-meta{display:flex;justify-content:space-between;color:var(--muted);font-size:10.5px;margin-top:2px}
+.metric-card.warn .spark-line{stroke:#d97706}
+.metric-card.warn .spark-area{fill:rgba(217,119,6,.10)}
+.metric-card.warn .spark circle{fill:#d97706}
+.metric-card.bad .spark-line{stroke:#dc2626}
+.metric-card.bad .spark-area{fill:rgba(220,38,38,.10)}
+.metric-card.bad .spark circle{fill:#dc2626}

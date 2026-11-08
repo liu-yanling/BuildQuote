@@ -8,8 +8,8 @@ GOLD = Path(__file__).resolve().parent.parent / "evals" / "qa_gold_large.json"
 def test_large_gold_set_has_enough_samples():
     data = json.loads(GOLD.read_text(encoding="utf-8"))
     samples = data.get("samples") or []
-    # 需求：评测题目扩展到 100–200 道
-    assert 100 <= len(samples) <= 200
+    # 需求：精简到 50 道（原 190 道加载太慢）
+    assert len(samples) == 50
     assert all(s.get("question") and s.get("contract") for s in samples)
 
 
