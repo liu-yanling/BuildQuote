@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BuildQuote · 成本监控工作台</title>
-<link rel="stylesheet" href="/static/style.css?v=0.7.0">
+<link rel="stylesheet" href="/static/style.css?v=0.7.1">
 </head>
 <body>
 <div class="layout">
@@ -23,7 +23,7 @@
 
     <div class="sidebar-foot">
       <div id="health" class="health"><span class="dot"></span>连接中…</div>
-      <div class="ver">v0.7.0 · 单进程单体</div>
+      <div class="ver">v0.7.1 · 单进程单体</div>
     </div>
   </aside>
 
@@ -188,26 +188,11 @@
         <p class="hint">单位填 kg / 吨 / 米 / 根 / m³；税率填小数（13% 填 0.13）；运费为单笔含税金额。</p>
         <div class="row-actions">
           <button id="save-quotes-btn" class="btn primary" onclick="saveQuotes()">保存报价（内部代录）</button>
-          <span class="muted">报价行已由「加载演示数据」自动填入 3 份（可手动修改）</span>
+          <span class="muted">报价行已由「加载演示数据」自动填入 10 份（可手动修改）</span>
         </div>
         <div id="quote-save-result" class="result-box"></div>
 
-        <div class="divider"></div>
-        <div class="card-head"><b>或：粘贴报价文本解析</b><span class="muted">启发式提取候选字段，仅供确认</span></div>
-        <div class="inq-form">
-          <label class="fld">供应商 <input id="parse-supplier" type="text" placeholder="供应商名称"></label>
-          <label class="fld">格式
-            <select id="parse-format">
-              <option value=".md" selected>.md</option>
-              <option value=".xlsx">.xlsx</option>
-              <option value=".pdf">.pdf</option>
-              <option value=".docx">.docx</option>
-            </select>
-          </label>
-        </div>
-        <textarea id="parse-text" class="parse-text" rows="4" placeholder="粘贴报价文本，例如：&#10;材料：螺纹钢  规格：HRB400 Φ20  单位：吨  含税单价：3580  税率：13%  运费：200"></textarea>
-        <div class="row-actions"><button id="parse-btn" class="btn ghost" onclick="parseQuote()">解析报价</button></div>
-        <div id="parse-result" class="result-box"></div>
+
       </div>
 
       <!-- ③ 核口径 -->
@@ -303,6 +288,6 @@
   </main>
 </div>
 
-<script src="/static/app.js?v=0.7.0"></script>
+<script src="/static/app.js?v=0.7.1"></script>
 </body>
 </html>

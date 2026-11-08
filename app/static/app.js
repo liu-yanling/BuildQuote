@@ -531,23 +531,6 @@ async function saveQuotes() {
   renderConfirm();
   focusStep(3);
 }
-async function parseQuote() {
-  const text = document.getElementById('parse-text').value.trim();
-  if (!text) { document.getElementById('parse-result').innerHTML = '<div class="empty">请粘贴报价文本。</div>'; return; }
-  const supplier = document.getElementById('parse-supplier').value.trim() || '待确认供应商';
-  const format = document.getElementById('parse-format').value;
-  setBusy('parse-btn', true, '解析中…');
-  const { ok, d } = await postJSON('/api/quotes/parse', { inquiry_id: INQUIRY.inquiry_id || 'IQ-2026-001', file_path: '', format, supplier, text, user: DEMO_USER });
-  setBusy('parse-btn', false);
-  if (!ok) { document.getElementById('parse-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + (d.needs_manual ? '（需人工录入）' : '') + '</div>'; return; }
-  const cands = d.candidates || [];
-  const found = cands.filter(c => c.value != null);
-  const rows = cands.map(c => '<tr><td>' + esc(c.field) + '</td><td>' + esc(c.value || '—') + '</td><td>' + esc(c.raw_value || '') + '</td><td>' + esc(c.source_span || '') + '</td><td class="num">' + (c.confidence || 0).toFixed(2) + '</td></tr>').join('');
-  document.getElementById('parse-result').innerHTML =
-    '<div class="ok-box">已提取 ' + found.length + '/' + cands.length + ' 个候选字段（仅供人工确认）：</div>' +
-    '<table class="result"><thead><tr><th>字段</th><th>值</th><th>原文</th><th>来源片段</th><th class="num">置信度</th></tr></thead><tbody>' + rows + '</tbody></table>';
-}
-
 function renderConfirm() {
   const quotes = INQUIRY.quotes.length ? INQUIRY.quotes : readQuoteRows();
   if (!quotes.length) {
@@ -748,7 +731,7 @@ function resetInquiry() {
   Object.assign(INQUIRY, { inquiry_id: '', suppliers: [], quotes: [], comparison: null, init_done: false });
   document.getElementById('supplier-list').innerHTML = '';
   document.getElementById('quote-tbody').innerHTML = '';
-  ['inq-init-result', 'quote-save-result', 'parse-result', 'ref-result', 'compute-result', 'report-result'].forEach(id => document.getElementById(id).innerHTML = '');
+  ['inq-init-result', 'quote-save-result', 'ref-result', 'compute-result', 'report-result'].forEach(id => document.getElementById(id).innerHTML = '');
   document.getElementById('confirm-preview').innerHTML = '<div class="empty">保存报价后，这里预览待确认字段与口径一致性。</div>';
   document.getElementById('confirm-status').textContent = '保存报价后自动检查（无需点击）';
   const btn = document.getElementById('demo-load-btn');
