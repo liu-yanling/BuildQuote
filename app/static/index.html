@@ -47,19 +47,31 @@
       <div class="monitor-grid">
         <div class="col inputs">
           <div class="card">
-            <div class="card-head"><b>预算（万元）</b><button class="btn-mini" onclick="addBudgetRow()">+ 加一行</button></div>
-            <table class="editable">
-              <thead><tr><th>科目</th><th style="width:120px">预算金额</th><th style="width:56px"></th></tr></thead>
-              <tbody id="budget-tbody"></tbody>
-            </table>
+            <div class="card-head"><b>预算（万元）</b>
+              <span class="card-sum" id="budget-sum">合计 0.00 万元</span>
+              <button class="btn-mini" onclick="addBudgetRow()">+ 加一行</button>
+            </div>
+            <div class="table-scroll">
+              <table class="editable budget-table">
+                <thead><tr><th style="width:32%">科目</th><th style="width:18%">预算金额</th><th style="width:10%">占比</th><th style="width:32%">说明</th><th style="width:8%"></th></tr></thead>
+                <tbody id="budget-tbody"></tbody>
+                <tfoot><tr class="total-row"><td>合计</td><td class="num" id="budget-total">0.00</td><td class="num" id="budget-total-pct">—</td><td colspan="2" class="muted" id="budget-total-note">共 0 个科目</td></tr></tfoot>
+              </table>
+            </div>
           </div>
           <div class="card">
-            <div class="card-head"><b>成本来源（实际发生）</b><button class="btn-mini" onclick="addSourceRow()">+ 加一行</button></div>
-            <table class="editable">
-              <thead><tr><th>来源类型</th><th>科目 / 别名</th><th style="width:110px">金额</th><th style="width:90px">来源ID</th><th style="width:56px"></th></tr></thead>
-              <tbody id="source-tbody"></tbody>
-            </table>
-            <p class="hint">科目可用别名：劳务→人工费、钢材/商品混凝土→材料费、措施费→其他直接费、现场经费→现场管理费 等</p>
+            <div class="card-head"><b>成本来源（实际发生）</b>
+              <span class="card-sum" id="source-sum">合计 0.00 万元</span>
+              <button class="btn-mini" onclick="addSourceRow()">+ 加一行</button>
+            </div>
+            <div class="table-scroll">
+              <table class="editable source-table">
+                <thead><tr><th style="width:9%">来源类型</th><th style="width:16%">科目 / 别名</th><th style="width:10%">金额</th><th style="width:13%">来源ID</th><th style="width:15%">日期</th><th style="width:19%">供应商 / 对方</th><th style="width:13%">备注</th><th style="width:5%"></th></tr></thead>
+                <tbody id="source-tbody"></tbody>
+                <tfoot><tr class="total-row"><td colspan="2">合计</td><td class="num" id="source-total">0.00</td><td colspan="5" class="muted" id="source-total-note">共 0 笔</td></tr></tfoot>
+              </table>
+            </div>
+            <p class="hint">科目可用别名：劳务→人工费、钢材/商品混凝土→材料费、措施费→其他直接费、现场经费→现场管理费 等；日期 / 供应商 / 备注会一并写入台账来源明细。</p>
           </div>
         </div>
 

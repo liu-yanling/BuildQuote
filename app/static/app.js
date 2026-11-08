@@ -44,52 +44,114 @@ async function checkHealth() {
 
 /* ===== ① 成本监控 ===== */
 const SAMPLE_BUDGET = [
-  ['人工费', 1000], ['材料费', 2000], ['机械使用费', 500], ['分包费', 3000],
-  ['其他直接费', 800], ['现场管理费', 600], ['公司管理费', 400], ['税金', 300], ['预备费', 500]
+  ['人工费', 1000, '按劳务分包合同预估'], ['材料费', 2000, '含钢材 / 商品混凝土'], ['机械使用费', 500, '塔吊 / 施工电梯'],
+  ['分包费', 3000, '装饰 / 安装分包'], ['其他直接费', 800, '措施费 / 临时设施'], ['现场管理费', 600, '现场管理人员'],
+  ['公司管理费', 400, '按比例分摊'], ['税金', 300, '增值税'], ['预备费', 500, '不可预见费']
 ];
 const SAMPLE_SOURCES = [
-  ['进度款', '劳务', 1060, 'S1'], ['进度款', '钢材', 2280, 'S2'],
-  ['进度款', '机械', 490, 'S3'], ['进度款', '分包', 2950, 'S4'],
-  ['进度款', '措施费', 800, 'S5'], ['进度款', '现场经费', 650, 'S6'],
-  ['进度款', '管理费', 400, 'S7'], ['进度款', '税金', 300, 'S8'], ['进度款', '预备费', 500, 'S9']
+  ['合同', '劳务', 620, 'HT-RG-001', '2026-09-30', '绵阳建工劳务有限公司', '人工费合同累计'],
+  ['进度款', '劳务', 440, 'JD-2026-09', '2026-10-25', '绵阳建工劳务有限公司', '9 月进度款'],
+  ['合同', '钢材', 1200, 'HT-GC-002', '2026-09-15', '四川钢材商贸有限公司', '钢材采购合同'],
+  ['进度款', '商品混凝土', 780, 'JD-2026-09', '2026-10-25', '绵阳商砼有限公司', 'C30 混凝土'],
+  ['签证', '钢材', 380, 'QZ-2026-014', '2026-10-18', '四川钢材商贸有限公司', '设计变更增加钢材'],
+  ['合同', '机械', 300, 'HT-JX-003', '2026-09-10', '绵阳机械租赁有限公司', '塔吊租赁'],
+  ['进度款', '机械', 205, 'JD-2026-09', '2026-10-25', '绵阳机械租赁有限公司', '台班费'],
+  ['合同', '分包', 2100, 'HT-FB-004', '2026-08-20', '四川壹术装饰工程有限公司', '装饰分包'],
+  ['进度款', '分包', 900, 'JD-2026-09', '2026-10-25', '四川壹术装饰工程有限公司', '9 月产值'],
+  ['进度款', '措施费', 520, 'JD-2026-09', '2026-10-25', '项目现场', '安全文明施工费'],
+  ['签证', '措施费', 300, 'QZ-2026-015', '2026-10-20', '项目现场', '临时设施增补'],
+  ['合同', '现场经费', 400, 'HT-XC-005', '2026-09-01', '项目现场', '现场管理人员'],
+  ['进度款', '现场经费', 260, 'JD-2026-09', '2026-10-25', '项目现场', '10 月现场经费'],
+  ['合同', '管理费', 380, 'HT-GL-006', '2026-09-01', '公司本部', '公司管理费分摊'],
+  ['进度款', '税金', 310, 'JD-2026-09', '2026-10-25', '税务机关', '9 月增值税'],
+  ['合同', '预备费', 520, 'HT-YB-007', '2026-09-01', '预备费', '不可预见费']
 ];
 
-function addBudgetRow(subject, budget) {
+function addBudgetRow(subject, budget, note) {
   const tr = document.createElement('tr');
-  tr.innerHTML = '<td><input class="c-subject" value="' + esc(subject) + '" placeholder="科目"></td>' +
-    '<td><input class="c-budget" type="number" step="0.01" value="' + esc(budget) + '" placeholder="金额"></td>' +
-    '<td><button class="btn-mini del" onclick="this.closest(\'tr\').remove()">删除</button></td>';
+  tr.innerHTML = '<td><input class="c-subject" value="' + esc(subject == null ? '' : subject) + '" placeholder="科目"></td>' +
+    '<td><input class="c-budget" type="number" step="0.01" value="' + esc(budget == null ? '' : budget) + '" placeholder="金额"></td>' +
+    '<td class="num c-pct">—</td>' +
+    '<td><input class="c-note" value="' + esc(note == null ? '' : note) + '" placeholder="如：按合同预估"></td>' +
+    '<td><button class="btn-mini del" onclick="this.closest(\'tr\').remove();calcTotals()">删除</button></td>';
   document.getElementById('budget-tbody').appendChild(tr);
+  calcTotals();
 }
-function addSourceRow(type, subject, amount, id) {
+function addSourceRow(type, subject, amount, id, date, supplier, note) {
   const tr = document.createElement('tr');
-  tr.innerHTML = '<td><input class="c-type" value="' + esc(type) + '"></td>' +
-    '<td><input class="c-subject" value="' + esc(subject) + '" placeholder="科目/别名"></td>' +
-    '<td><input class="c-amount" type="number" step="0.01" value="' + esc(amount) + '"></td>' +
-    '<td><input class="c-id" value="' + esc(id) + '"></td>' +
-    '<td><button class="btn-mini del" onclick="this.closest(\'tr\').remove()">删除</button></td>';
+  tr.innerHTML = '<td><input class="c-type" value="' + esc(type || '') + '"></td>' +
+    '<td><input class="c-subject" value="' + esc(subject || '') + '" placeholder="科目/别名"></td>' +
+    '<td><input class="c-amount" type="number" step="0.01" value="' + esc(amount == null ? '' : amount) + '"></td>' +
+    '<td><input class="c-id" value="' + esc(id || '') + '"></td>' +
+    '<td><input class="c-date" type="date" value="' + esc(date || '') + '"></td>' +
+    '<td><input class="c-supplier" value="' + esc(supplier || '') + '" placeholder="供应商/对方"></td>' +
+    '<td><input class="c-note" value="' + esc(note || '') + '" placeholder="备注"></td>' +
+    '<td><button class="btn-mini del" onclick="this.closest(\'tr\').remove();calcTotals()">删除</button></td>';
   document.getElementById('source-tbody').appendChild(tr);
+  calcTotals();
 }
 function loadSample() {
   document.getElementById('budget-tbody').innerHTML = '';
   document.getElementById('source-tbody').innerHTML = '';
-  SAMPLE_BUDGET.forEach(r => addBudgetRow(r[0], r[1]));
-  SAMPLE_SOURCES.forEach(r => addSourceRow(r[0], r[1], r[2], r[3]));
-  document.getElementById('monitor-result').innerHTML = '<div class="empty">已加载样例数据，点「运行监控」查看归集台账与预警。</div>';
+  SAMPLE_BUDGET.forEach(r => addBudgetRow(r[0], r[1], r[2]));
+  SAMPLE_SOURCES.forEach(r => addSourceRow(r[0], r[1], r[2], r[3], r[4], r[5], r[6]));
+  calcTotals();
+  document.getElementById('monitor-result').innerHTML = '<div class="empty">已加载样例数据（9 个科目 / 16 笔成本来源），点「运行监控」查看归集台账与预警。</div>';
 }
+/* 表格底部/顶部汇总：随输入实时重算（仅用于界面展示，正式数字仍由规则引擎计算） */
+function calcTotals() {
+  const budgetRows = [...document.querySelectorAll('#budget-tbody tr')];
+  const budgets = budgetRows.map(tr => parseFloat(tr.querySelector('.c-budget').value) || 0);
+  const budgetTotal = budgets.reduce((a, b) => a + b, 0);
+  budgetRows.forEach((tr, i) => {
+    const cell = tr.querySelector('.c-pct');
+    if (cell) cell.textContent = budgetTotal > 0 ? (budgets[i] / budgetTotal * 100).toFixed(1) + '%' : '—';
+  });
+  const bTotal = document.getElementById('budget-total');
+  const bPct = document.getElementById('budget-total-pct');
+  const bNote = document.getElementById('budget-total-note');
+  const bSum = document.getElementById('budget-sum');
+  if (bTotal) bTotal.textContent = fmtMoney(budgetTotal);
+  if (bPct) bPct.textContent = budgetTotal > 0 ? '100.0%' : '—';
+  if (bNote) bNote.textContent = '共 ' + budgetRows.length + ' 个科目';
+  if (bSum) bSum.textContent = '合计 ' + fmtMoney(budgetTotal) + ' 万元';
+
+  const sourceRows = [...document.querySelectorAll('#source-tbody tr')];
+  const amounts = sourceRows.map(tr => parseFloat(tr.querySelector('.c-amount').value) || 0);
+  const sourceTotal = amounts.reduce((a, b) => a + b, 0);
+  const sTotal = document.getElementById('source-total');
+  const sNote = document.getElementById('source-total-note');
+  const sSum = document.getElementById('source-sum');
+  if (sTotal) sTotal.textContent = fmtMoney(sourceTotal);
+  if (sNote) sNote.textContent = '共 ' + sourceRows.length + ' 笔';
+  if (sSum) {
+    const diff = sourceTotal - budgetTotal;
+    sSum.textContent = '合计 ' + fmtMoney(sourceTotal) + ' 万元（较预算 ' + (diff >= 0 ? '+' : '') + fmtMoney(diff) + '）';
+  }
+}
+
 function readBudgetRows() {
   return [...document.querySelectorAll('#budget-tbody tr')].map(tr => ({
     subject: tr.querySelector('.c-subject').value.trim(),
-    budget: parseFloat(tr.querySelector('.c-budget').value) || 0
+    budget: parseFloat(tr.querySelector('.c-budget').value) || 0,
+    note: tr.querySelector('.c-note').value.trim()
   })).filter(r => r.subject);
 }
 function readSources() {
-  return [...document.querySelectorAll('#source-tbody tr')].map(tr => ({
-    source_type: tr.querySelector('.c-type').value.trim() || '进度款',
-    subject: tr.querySelector('.c-subject').value.trim(),
-    amount: parseFloat(tr.querySelector('.c-amount').value) || 0,
-    source_id: tr.querySelector('.c-id').value.trim()
-  })).filter(r => r.subject);
+  return [...document.querySelectorAll('#source-tbody tr')].map(tr => {
+    const date = tr.querySelector('.c-date').value.trim();
+    const supplier = tr.querySelector('.c-supplier').value.trim();
+    const note = tr.querySelector('.c-note').value.trim();
+    return {
+      source_type: tr.querySelector('.c-type').value.trim() || '进度款',
+      subject: tr.querySelector('.c-subject').value.trim(),
+      amount: parseFloat(tr.querySelector('.c-amount').value) || 0,
+      source_id: tr.querySelector('.c-id').value.trim(),
+      date: date,
+      supplier: supplier,
+      note: [date, supplier, note].filter(Boolean).join(' · ')
+    };
+  }).filter(r => r.subject);
 }
 
 async function runMonitor() {
@@ -124,6 +186,14 @@ function renderMonitor(d) {
       '<td class="num ' + cls + '">' + fmtPct(dev) + '</td><td>' + badge + '</td></tr>';
   }).join('');
 
+  const totBudget = ledger.reduce((s, r) => s + (Number(r.budget) || 0), 0);
+  const totActual = ledger.reduce((s, r) => s + (Number(r.actual) || 0), 0);
+  const totDev = totActual - totBudget;
+  const totCls = totDev > 0 ? 'dev-up' : (totDev < 0 ? 'dev-down' : 'dev-flat');
+  const totalRow = '<tr class="total-row"><td>合计</td><td class="num">' + fmtMoney(totBudget) + '</td>' +
+    '<td class="num">' + fmtMoney(totActual) + '</td><td class="num ' + totCls + '">' + (totDev >= 0 ? '+' : '') + fmtMoney(totDev) + '</td>' +
+    '<td class="num ' + totCls + '">' + (totBudget ? fmtPct(totDev / totBudget) : '—') + '</td><td></td></tr>';
+
   const alertHtml = alerts.length ? alerts.map(a => {
     const lv = a.level === '红警' ? 'red' : 'yellow';
     return '<div class="alert-item ' + lv + '"><span class="lv">' + esc(a.level) + ' ' + esc(a.subject) + '</span>' +
@@ -134,9 +204,10 @@ function renderMonitor(d) {
   const formulaHtml = Object.keys(f).map(k => '<div><code>' + esc(k) + '</code> = ' + esc(f[k]) + '</div>').join('');
 
   document.getElementById('monitor-result').innerHTML =
-    '<div class="card"><div class="card-head"><b>成本台账（' + esc(d.rule_version || '') + '）</b></div>' +
+    '<div class="card"><div class="card-head"><b>成本台账（' + esc(d.rule_version || '') + '）</b>' +
+    '<span class="card-sum">预算 ' + fmtMoney(totBudget) + ' / 实际 ' + fmtMoney(totActual) + ' 万元</span></div>' +
     '<table class="result"><thead><tr><th>科目</th><th class="num">预算</th><th class="num">实际</th><th class="num">偏差</th><th class="num">偏差率</th><th>状态</th></tr></thead>' +
-    '<tbody>' + rows + '</tbody></table></div>' +
+    '<tbody>' + rows + '</tbody><tfoot>' + totalRow + '</tfoot></table></div>' +
     '<div class="card"><div class="card-head"><b>预警清单</b><span class="muted">黄警 ≥' + fmtPct(d.yellow_ratio) + ' / 红警 ≥' + fmtPct(d.red_ratio) + '</span></div>' + alertHtml + '</div>' +
     '<div class="card"><div class="card-head"><b>口径公式</b></div><div class="formulas">' + formulaHtml + '</div></div>';
 }
@@ -591,6 +662,11 @@ document.addEventListener('DOMContentLoaded', () => {
   const h = (location.hash || '#monitor').slice(1);
   switchView(document.querySelector('[data-view="' + h + '"]') ? h : 'monitor');
   loadSample();
+  // 表格输入变化时实时重算合计与占比
+  ['budget-tbody', 'source-tbody'].forEach(id => {
+    const body = document.getElementById(id);
+    if (body) body.addEventListener('input', calcTotals);
+  });
   loadEvalSample();
   renderGoldTable();
   renderSuppliers();
