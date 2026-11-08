@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BuildQuote · 成本监控工作台</title>
-<link rel="stylesheet" href="/static/style.css?v=0.6.0">
+<link rel="stylesheet" href="/static/style.css?v=0.7.0">
 </head>
 <body>
 <div class="layout">
@@ -23,7 +23,7 @@
 
     <div class="sidebar-foot">
       <div id="health" class="health"><span class="dot"></span>连接中…</div>
-      <div class="ver">v0.6.0 · 单进程单体</div>
+      <div class="ver">v0.7.0 · 单进程单体</div>
     </div>
   </aside>
 
@@ -163,6 +163,15 @@
           <button id="init-inquiry-btn" class="btn primary" onclick="initInquiry()">初始化询价单</button>
         </div>
         <div id="inq-init-result" class="result-box"></div>
+
+        <div class="divider"></div>
+        <div class="card-head"><b>或：直接导入报价单</b><span class="muted">支持 PDF / Word / Excel，自动识别并分析最优报价</span></div>
+        <div class="row-actions">
+          <input id="quote-file" type="file" accept=".pdf,.docx,.xlsx,.xls" hidden onchange="importQuoteFile(event)">
+          <button class="btn ghost" onclick="document.getElementById('quote-file').click()">导入报价单（PDF / Word / Excel）</button>
+          <span class="muted">识别后自动填入第②步，并给出最优报价与计算过程</span>
+        </div>
+        <div id="quote-import-result" class="result-box"></div>
       </div>
 
       <!-- ② 收报价 -->
@@ -171,7 +180,7 @@
         <table class="editable quote-table">
           <thead><tr>
             <th>供应商</th><th>材料</th><th>规格</th><th>单位</th>
-            <th style="width:96px">含税单价</th><th style="width:76px">数量</th>
+            <th style="width:96px">单价（不含税）</th><th style="width:76px">数量</th>
             <th style="width:70px">税率</th><th style="width:70px">运费</th><th style="width:48px"></th>
           </tr></thead>
           <tbody id="quote-tbody"></tbody>
@@ -294,6 +303,6 @@
   </main>
 </div>
 
-<script src="/static/app.js?v=0.6.0"></script>
+<script src="/static/app.js?v=0.7.0"></script>
 </body>
 </html>

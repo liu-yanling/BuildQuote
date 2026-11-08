@@ -489,23 +489,26 @@ function readQuoteRows() {
   })).filter(r => r.supplier);
 }
 /* 演示数据：第 1 步就把单号 / 供应商 / 3 份报价全部备好，之后按 ①→⑤ 逐个点 */
+const DEMO_QUOTES = [
+  ['四川钢材商贸', 3580, 200], ['成都建材供应', 3620, 150], ['成都金属材料', 3560, 260],
+  ['重庆钢铁集团', 3575, 180], ['德阳建材有限公司', 3610, 220], ['资阳钢材市场', 3590, 240],
+  ['宜宾金属材料', 3630, 120], ['泸州钢铁贸易', 3545, 300], ['南充建材集团', 3605, 160],
+  ['遂宁钢铁物资', 3650, 140]
+];
 function loadDemoData() {
   resetInquiry();
   document.getElementById('inq-id').value = 'IQ-2026-001';
   document.getElementById('inq-deadline').value = '2026-11-20';
-  INQUIRY.suppliers = ['四川钢材商贸', '成都建材供应', '成都金属材料'];
+  INQUIRY.suppliers = DEMO_QUOTES.map(d => d[0]);
   renderSuppliers();
   document.getElementById('quote-tbody').innerHTML = '';
-  addQuoteRow('四川钢材商贸', '螺纹钢', 'HRB400 Φ20', '吨', 3580, 100, 0.13, 200);
-  addQuoteRow('成都建材供应', '螺纹钢', 'HRB400 Φ20', '吨', 3620, 100, 0.13, 150);
-  addQuoteRow('成都金属材料', '螺纹钢', 'HRB400 Φ20', '吨', 3560, 100, 0.13, 260);
+  DEMO_QUOTES.forEach(d => addQuoteRow(d[0], '螺纹钢', 'HRB400 Φ20', '吨', d[1], 100, 0.13, d[2]));
   INQUIRY.quotes = readQuoteRows();
   renderConfirm();
   const btn = document.getElementById('demo-load-btn');
   if (btn) btn.textContent = '重新加载演示数据';
   document.getElementById('inq-init-result').innerHTML =
-    '<div class="ok-box">✓ 演示数据已就绪：3 家供应商 / 3 份报价（含税单价 3580 / 3620 / 3560，运费 200 / 150 / 260）。' +
-    '请从第 1 步开始，点「初始化询价单」。</div>';
+    '<div class="ok-box">✓ 演示数据已就绪：<b>10 家供应商 / 10 份报价</b>（单价 3,545–3,650 元/吨、运费 120–300 元，均为吨计价 / 13% 税率）。请从第 1 步开始，点「初始化询价单」。</div>';
   updateStepper(1);
   document.getElementById('inq-card-1').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
@@ -565,10 +568,11 @@ function renderConfirm() {
     : '<span class="badge normal">口径一致</span>';
 
   const rows = quotes.map(q => '<tr><td>' + esc(q.supplier) + '</td><td>' + esc(q.material) + '</td><td>' + esc(q.spec) + '</td>' +
-    '<td>' + esc(q.unit) + '</td><td class="num">' + fmtMoney(q.unit_price) + '</td><td class="num">' + q.quantity + '</td>' +
+    '<td>' + esc(q.unit) + '</td><td class="num">' + fmtMoney(q.unit_price) + '</td><td class="num">' + fmtMoney(q.quantity) + '</td>' +
     '<td class="num">' + fmtPct(q.tax_rate) + '</td><td class="num">' + fmtMoney(q.freight) + '</td></tr>').join('');
   document.getElementById('confirm-preview').innerHTML =
-    '<table class="result"><thead><tr><th>供应商</th><th>材料</th><th>规格</th><th>单位</th><th class="num">含税单价</th><th class="num">数量</th><th class="num">税率</th><th class="num">运费</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+    '<table class="result"><colgroup><col style="width:20%"><col style="width:14%"><col style="width:18%"><col style="width:9%"><col style="width:12%"><col style="width:8%"><col style="width:9%"><col style="width:10%"></colgroup>' +
+    '<thead><tr><th>供应商</th><th>材料</th><th>规格</th><th>单位</th><th class="num">不含税单价</th><th class="num">数量</th><th class="num">税率</th><th class="num">运费</th></tr></thead><tbody>' + rows + '</tbody></table>' +
     '<p class="hint">关键字段（单位/税率/运费）需人工确认后再进入比价。</p>';
 }
 
@@ -587,18 +591,45 @@ async function searchRef() {
     '<div class="empty" style="padding:14px">无命中</div>';
 }
 
-async function computeComparison() {
+async function computeComparison(auto) {
   const quotes = INQUIRY.quotes.length ? INQUIRY.quotes : readQuoteRows();
   INQUIRY.quotes = quotes;
   if (quotes.length < 3) { document.getElementById('compute-result').innerHTML = '<div class="empty">报价不足 3 份，不进入比价。请先保存 ≥3 份报价。</div>'; return; }
   setBusy('compute-btn', true, '规则计算中…');
-  updateStepper(4);
+  if (!auto) updateStepper(4);
   const { ok, d } = await postJSON('/api/quotes/compute', { inquiry_id: INQUIRY.inquiry_id || 'IQ-2026-001', items: quotes });
   setBusy('compute-btn', false);
   if (!ok) { document.getElementById('compute-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + '</div>'; return; }
   INQUIRY.comparison = d;
   renderComparison(d);
+  if (auto) return;
   focusStep(5);
+}
+
+function renderBestAnalysis(d) {
+  const ranking = (d.ranking && d.ranking.length) ? d.ranking : [];
+  if (!d.comparable || !ranking.length) return '';
+  const best = ranking[0], second = ranking[1] || null;
+  const unit = best.unit || '';
+  const diff = (second && best.price_with_tax != null && second.price_with_tax != null)
+    ? (second.price_with_tax - best.price_with_tax) : null;
+  const diffPct = (diff != null && second.price_with_tax) ? diff / second.price_with_tax : null;
+  const count = (d.items || []).length;
+  const steps = [
+    '口径检查：' + count + ' 份报价的单位、税率、运费口径一致 → 可进入比价。',
+    '含税单价 = 报价单价 × (1 + 税率)：' + fmtMoney(best.unit_price) + ' × (1 + ' + fmtPct(best.tax_rate) + ') = ' + fmtMoney(best.price_with_tax) + ' 元/' + esc(unit) + '。',
+    '含税总价 = 含税单价 × 数量 + 运费：' + fmtMoney(best.price_with_tax) + ' × ' + fmtMoney(best.quantity) + ' + ' + fmtMoney(best.freight) + ' = ' + fmtMoney(best.total) + ' 元。',
+    '排名：按含税单价升序，' + esc(best.supplier) + ' 综合最优（第 1 名）' +
+      (second ? '；第 2 名 ' + esc(second.supplier) + ' 含税单价 ' + fmtMoney(second.price_with_tax) +
+        (diff != null ? '，高 ' + fmtMoney(diff) + ' 元/' + esc(unit) + '（' + fmtPct(diffPct) + '）' : '') : '') + '。'
+  ];
+  return '<div class="best-analysis">' +
+    '<div class="best-head"><b>✓ 最优报价分析</b><span class="muted">规则引擎快照 ' + esc(d.snapshot_id || '—') + '</span></div>' +
+    '<div class="best-winner"><div class="bw-main">最优推荐：<b>' + esc(best.supplier) + '</b></div>' +
+    '<div class="bw-metrics"><span>含税单价 <b>' + fmtMoney(best.price_with_tax) + '</b> 元/' + esc(unit) + '</span>' +
+    '<span>含税总价 <b>' + fmtMoney(best.total) + '</b> 元</span><span>参与比价 <b>' + count + '</b> 份</span></div></div>' +
+    (diff != null ? '<div class="best-diff">比第 2 名 ' + esc(second.supplier) + ' 便宜 <b>' + fmtMoney(diff) + '</b> 元/' + esc(unit) + '（' + fmtPct(diffPct) + '）</div>' : '') +
+    '<ol class="best-steps">' + steps.map(x => '<li>' + x + '</li>').join('') + '</ol></div>';
 }
 
 function renderComparison(d) {
@@ -617,9 +648,50 @@ function renderComparison(d) {
   const formulas = Object.keys(d.formulas || {}).map(k => '<div><code>' + esc(k) + '</code> = ' + esc(d.formulas[k]) + '</div>').join('');
   document.getElementById('compute-result').innerHTML =
     '<div class="ok-box">规则引擎比价结果（' + esc(d.rule_version || '') + ' · 快照 ' + esc(d.snapshot_id || '') + '）</div>' +
-    reasonsHtml +
-    '<table class="result"><thead><tr><th>排名</th><th>供应商</th><th>材料</th><th>规格</th><th>单位</th><th class="num">单价</th><th class="num">含税单价</th><th class="num">含税总价</th><th class="num">税率</th><th class="num">运费</th><th class="num">较参考价</th></tr></thead><tbody>' + rows + '</tbody></table>' +
+    reasonsHtml + renderBestAnalysis(d) +
+    '<table class="result"><colgroup><col style="width:8%"><col style="width:15%"><col style="width:8%"><col style="width:10%"><col style="width:7%"><col style="width:8%"><col style="width:10%"><col style="width:10%"><col style="width:7%"><col style="width:7%"><col style="width:10%"></colgroup>' +
+    '<thead><tr><th>排名</th><th>供应商</th><th>材料</th><th>规格</th><th>单位</th><th class="num">单价</th><th class="num">含税单价</th><th class="num">含税总价</th><th class="num">税率</th><th class="num">运费</th><th class="num">较参考价</th></tr></thead><tbody>' + rows + '</tbody></table>' +
     '<div class="card-head" style="margin-top:12px"><b>口径公式</b></div><div class="formulas">' + formulas + '</div>';
+}
+
+/* 第①步：导入报价单（PDF / Word / Excel）→ 自动回填 + 自动分析 */
+async function importQuoteFile(ev) {
+  const input = ev && ev.target;
+  const file = input && input.files ? input.files[0] : null;
+  if (!file) return;
+  input.value = '';
+  const box = document.getElementById('quote-import-result');
+  if (box) box.innerHTML = '<div class="empty">正在识别报价单（' + esc(file.name) + '）…</div>';
+  try {
+    const buf = await file.arrayBuffer();
+    const resp = await fetch('/api/quotes/import?filename=' + encodeURIComponent(file.name), {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/octet-stream' }, body: buf
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.detail || ('HTTP ' + resp.status));
+    const rows = d.rows || [];
+    if (!rows.length) {
+      box.innerHTML = '<div class="err-box">未识别到报价行：' + esc(d.note || '') + '</div>';
+      return;
+    }
+    document.getElementById('quote-tbody').innerHTML = '';
+    rows.forEach(r => addQuoteRow(r.supplier, r.material, r.spec, r.unit, r.unit_price, r.quantity, r.tax_rate, r.freight));
+    INQUIRY.suppliers = [...new Set(rows.map(r => r.supplier).filter(Boolean))];
+    renderSuppliers();
+    INQUIRY.quotes = readQuoteRows();
+    renderConfirm();
+    box.innerHTML = '<div class="ok-box">✓ 已识别 <b>' + rows.length + '</b> 份报价（' + esc(d.format || '') + '：' + esc(file.name) +
+      '），已填入第②步并完成口径检查。' + (rows.length >= 3 ? '已自动分析最优报价 →' : '') + '<br><span class="muted">' + esc(d.note || '') + '</span></div>';
+    const hint = document.getElementById('inq-next-hint');
+    if (hint) hint.innerHTML = '<b>当前第 1 步</b> · 已导入 ' + rows.length + ' 份报价并自动分析最优报价 → 点「初始化询价单」继续流程。';
+    if (rows.length >= 3) {
+      await computeComparison(true);
+      document.getElementById('compute-result').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  } catch (e) {
+    if (box) box.innerHTML = '<div class="err-box">导入失败：' + esc(String(e.message || e)) + '</div>';
+  }
 }
 
 async function approveReport(action) {

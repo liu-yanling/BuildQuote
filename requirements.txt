@@ -11,3 +11,5 @@ jieba>=0.42
 # 真实报告导出（硬化阶段）：.docx 生成 + .pdf 生成（含中文字体）
 python-docx>=1.1
 reportlab>=4.0
+# 报价单导入：PDF 文本提取
+pypdf>=4.0

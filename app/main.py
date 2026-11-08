@@ -16,8 +16,8 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
 from app import (cost_io, cost_rules, cost_tools, eval as eval_mod, export as export_mod,
-                 permissions, prompts, rules, scheduler, team as team_mod, tools,
-                 workflow)
+                 permissions, prompts, quote_import, rules, scheduler, team as team_mod,
+                 tools, workflow)
 from app.agent_loop import Harness
 from app.config import load_settings
 from app.embeddings import make_embedder
@@ -108,6 +108,20 @@ def parse_quote(payload: ParseIn) -> dict:
                                       {"user": user, "store": store,
                                        "enterprise_id": user.enterprise_id,
                                        "project_id": payload.project_id})
+
+
+@app.post("/api/quotes/import")
+async def quote_import_upload(request: Request, filename: str = "") -> dict:
+    """导入报价单（PDF / Word / Excel）：自动识别报价行，供前端回填并做最优报价分析。"""
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="空文件")
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件过大（上限 10MB）")
+    try:
+        return quote_import.parse_quote_bytes(data, filename)
+    except Exception as exc:  # noqa: BLE001 —— 解析失败统一 400
+        raise HTTPException(status_code=400, detail=f"无法识别报价单：{exc}")
 
 
 class ManualIn(BaseModel):

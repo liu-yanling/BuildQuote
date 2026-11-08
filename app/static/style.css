@@ -89,7 +89,22 @@ table.editable td.c-pct{color:#475569;font-size:12px}
 table.result{width:100%;border-collapse:collapse;font-size:13px}
 table.result th{text-align:left;background:#f8fafc;color:#475569;font-weight:600;font-size:12px;padding:8px 10px;border-bottom:1px solid var(--line)}
 table.result td{padding:8px 10px;border-bottom:1px solid #f1f5f9}
-table.result tfoot td{padding:9px 10px;border-top:2px solid var(--line);background:#f8fafc;font-weight:600;font-size:12.5px}
+table.result th.num{text-align:right}
+#confirm-preview table.result,#compute-result table.result{table-layout:fixed}
+
+/* 最优报价分析 */
+.best-analysis{border:1px solid #bbf7d0;background:linear-gradient(180deg,#f0fdf4,#f8fafc);border-radius:10px;padding:14px 16px;margin:10px 0 14px}
+.best-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.best-head b{color:#15803d;font-size:14px}
+.best-winner{background:#fff;border:1px solid #bbf7d0;border-radius:9px;padding:12px 14px;margin-bottom:8px}
+.best-winner .bw-main{font-size:13.5px;margin-bottom:6px;color:#334155}
+.best-winner .bw-main b{font-size:18px;color:#15803d}
+.best-winner .bw-metrics{display:flex;gap:18px;flex-wrap:wrap;font-size:12.5px;color:#475569}
+.best-winner .bw-metrics b{color:#0f172a;font-variant-numeric:tabular-nums}
+.best-diff{font-size:12.5px;color:#b45309;background:#fffbeb;border:1px solid #fde68a;border-radius:8px;padding:6px 10px;margin-bottom:8px}
+.best-diff b{color:#b45309}
+.best-steps{margin:6px 0 0 18px;padding:0;font-size:12.5px;color:#334155;line-height:1.75}
+.best-steps li{margin-bottom:2px}
 table.result tr:last-child td{border-bottom:none}
 .num{font-variant-numeric:tabular-nums;text-align:right}
 .dev-up{color:var(--red);font-weight:600}
