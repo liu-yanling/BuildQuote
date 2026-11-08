@@ -17,7 +17,9 @@
   <img alt="LLM" src="https://img.shields.io/badge/LLM-DeepSeek-4D6BFE" />
   <img alt="Version" src="https://img.shields.io/badge/version-v0.10.0-2563EB" />
   <img alt="Tests" src="https://img.shields.io/badge/tests-72%20passed-brightgreen" />
-  <img alt="License" src="https://img.shields.io/badge/license-Private-lightgrey" />
+  <a href="https://github.com/liu-yanling/BuildQuote/actions/workflows/ci.yml"><img alt="CI" src="https://github.com/liu-yanling/BuildQuote/actions/workflows/ci.yml/badge.svg" /></a>
+  <a href="https://github.com/liu-yanling/BuildQuote/releases"><img alt="Release" src="https://img.shields.io/github/v/release/liu-yanling/BuildQuote?color=2563EB" /></a>
+  <img alt="License" src="https://img.shields.io/badge/license-source--available-lightgrey" />
 </p>
 
 ---
@@ -25,6 +27,7 @@
 ## 📖 目录
 
 - [项目简介](#-项目简介)
+- [在线体验](#-在线体验)
 - [功能特性](#-功能特性)
 - [界面预览](#-界面预览)
 - [设计红线](#-设计红线)
@@ -53,6 +56,16 @@ BuildQuote 是一个**房建项目成本管理**的可运行 MVP，面向施工�
 - 评测看板：检索召回率、问答引用命中率、预警覆盖率/准确率、引用可追溯率，带历史趋势图。
 
 > 定位：单进程单体、开箱即用的演示/内测版本；数据落本地 SQLite + 本地向量库，适合私有化部署。
+
+---
+
+## 🌐 在线体验
+
+> 演示环境运行在一台临时公网隧道上（服务重启后地址会变化，仅供体验）：
+>
+> **https://4ef294307cd29c4b-50-7-252-188.serveousercontent.com**
+>
+> 首次打开若出现 Serveo 提示页，点 **Continue to Site** 即可进入。长期稳定上线方式见 [DEPLOY.md](DEPLOY.md)。
 
 ---
 
@@ -304,7 +317,8 @@ PYTHONPATH=. .venv/bin/python scripts/eval_qa.py
 
 ## 📄 许可与联系
 
-- 本项目为私有项目，未经授权请勿公开分发。
+- 本仓库公开托管仅用于**作品展示与技术交流**；未经作者书面许可，不得商用、二次分发或对外提供服务（见 [LICENSE](LICENSE)）。
 - 作者：刘燕玲 · GitHub [@liu-yanling](https://github.com/liu-yanling)
+- 合作 / 商用 / 定制：欢迎通过 GitHub 或站点联系。
 
 <p align="center"><sub>BuildQuote · 让每一笔成本都有据可查</sub></p>
