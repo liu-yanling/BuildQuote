@@ -61,11 +61,10 @@ BuildQuote 是一个**房建项目成本管理**的可运行 MVP，面向施工�
 
 ## 🌐 在线体验
 
-> 演示环境运行在一台临时公网隧道上（服务重启后地址会变化，仅供体验）：
+> 本项目是带后端 + 本地模型的单体应用，演示环境通过临时公网隧道提供（免费隧道有时效，地址会变化）。
 >
-> **https://4ef294307cd29c4b-50-7-252-188.serveousercontent.com**
->
-> 首次打开若出现 Serveo 提示页，点 **Continue to Site** 即可进入。长期稳定上线方式见 [DEPLOY.md](DEPLOY.md)。
+> - 想自己起一个公网演示地址：`bash scripts/start_public_tunnel.sh`（输出一个临时 HTTPS 地址，首次打开点 *Continue to Site*）
+> - 需要当前体验地址 / 长期稳定部署（服务器 + 域名 + HTTPS）：见 [DEPLOY.md](DEPLOY.md) 或联系作者
 
 ---
 
