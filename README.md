@@ -1,225 +1,310 @@
-# BuildQuote（骨架 · V4）
+<p align="center">
+  <img src="docs/logo.png" width="160" alt="BuildQuote logo" />
+</p>
 
-房建成本工作台 MVP 骨架：把「建材询价比价 + 成本动态归集 + 超支预警」串成一条可对话链路。
+<h1 align="center">BuildQuote · 成本监控工作台</h1>
 
-> V4 在 V3 询价比价骨架之上新增：三独立子 Agent（归集/预警/问答，s06+s13）、RAG 向量/混合召回（独立 embedding API）、
-> 成本科目规则引擎、模块化 Prompt 四层、评测体系。硬化与产品化在后续迭代补齐。
+<p align="center">
+  面向房建项目的成本全过程闭环 MVP：<b>预算监控 · 合同问答 · 询价比价 · 合同导入 · 报告导出 · 质量评测</b><br/>
+  纯规则引擎算钱，模型只做解释与摘要，每一笔数字都能追溯到依据。
+</p>
 
-## 能力
+<p align="center">
+  <img alt="Python" src="https://img.shields.io/badge/Python-3.12-3776AB?logo=python&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-0.110+-009688?logo=fastapi&logoColor=white" />
+  <img alt="SQLite" src="https://img.shields.io/badge/SQLite-3-003B57?logo=sqlite&logoColor=white" />
+  <img alt="RAG" src="https://img.shields.io/badge/RAG-bge--small--zh-8A2BE2" />
+  <img alt="LLM" src="https://img.shields.io/badge/LLM-DeepSeek-4D6BFE" />
+  <img alt="Version" src="https://img.shields.io/badge/version-v0.10.0-2563EB" />
+  <img alt="Tests" src="https://img.shields.io/badge/tests-72%20passed-brightgreen" />
+  <img alt="License" src="https://img.shields.io/badge/license-Private-lightgrey" />
+</p>
 
-### 询价比价（V1–V3，沿用）
+---
 
-建需求 → 收报价 → 核口径 → 做比价 → 出报告（s16 工作流 + s10 任务 + s11 后台 + s12 催收 + 规则引擎）。
+## 📖 目录
 
-前端「演示模式」：第 1 步一键加载演示数据（3 家供应商 + 3 份报价），之后按 ①→⑤ 顺序点击，
-步骤条实时显示当前第几步、下一步该点哪个按钮，每步都会产出可见结果（口径检查 / 规则比价 / 审核 / 导出 PDF·Word）。
+- [项目简介](#-项目简介)
+- [功能特性](#-功能特性)
+- [界面预览](#-界面预览)
+- [设计红线](#-设计红线)
+- [技术架构](#-技术架构)
+- [目录结构](#-目录结构)
+- [快速开始](#-快速开始)
+- [配置说明](#-配置说明)
+- [部署上线](#-部署上线)
+- [测试与评测](#-测试与评测)
+- [常见问题](#-常见问题)
+- [版本记录](#-版本记录)
+- [Roadmap](#-roadmap)
 
-### 报价单导入（v0.7.0 · 硬化阶段）
+---
 
-第①步「建需求」支持直接导入报价单：**PDF / Word / Excel** 三种格式。
-`POST /api/quotes/import`（原始字节 + filename 查询参数）自动识别供应商/材料/规格/单位/不含税单价/数量/税率/运费，
-返回结构化报价行；前端回填第②步报价表并**自动运行规则引擎比价**，给出：
+## 🏗 项目简介
 
-- 最优报价结论（最优供应商、含税单价、含税总价、与第 2 名差价）
-- 计算过程（口径检查 → 含税单价 = 不含税单价 ×(1+税率) → 含税总价 = 含税单价×数量+运费 → 排名）
-- 演示样例：`examples/报价单样例.xlsx / .docx / .pdf`（各 10 家供应商）
+BuildQuote 是一个**房建项目成本管理**的可运行 MVP，面向施工企业成本经理/项目部：
 
-扫描件 PDF 需先 OCR；识别结果仍需人工确认（红线）。
+- 预算 vs 实际按科目归集，自动算偏差并给出**黄警 / 红警**；
+- 合同、进度款、签证三源成本台账，支持导入/导出 Excel；
+- 合同**导入即解析**：金额、日期、编号、供应商自动填行，点开即可查看原件与「合同要点分析」；
+- 合同知识库 RAG：自然语言问合同条款，回答带《合同编号》第 X 条引用；知识检索支持**联网搜索**建筑行业通用知识；
+- 询价比价五步闭环：建需求 → 收报价 → 核口径 → 做比价 → 出报告，报价单可导入 PDF/Word/Excel 并自动给出**最优报价分析**；
+- 报告审核通过后导出真实 **PDF / Word**；
+- 评测看板：检索召回率、问答引用命中率、预警覆盖率/准确率、引用可追溯率，带历史趋势图。
 
-### 合同导入与合同要点分析（v0.10.0）
+> 定位：单进程单体、开箱即用的演示/内测版本；数据落本地 SQLite + 本地向量库，适合私有化部署。
 
-- 成本来源卡片新增「导入合同」：支持 **PDF / Word / Excel**，自动识别合同名称、编号、
-  金额（万元）、签订日期、甲方/乙方、建议科目，并自动填入一行（金额/日期/供应商/备注），无需手工录。
-- 合同文件存档到 `data/contracts/`；点某行（或行内「合同」按钮）可查看：
-  合同原件下载、解析字段、DeepSeek 依据合同原文生成「合同要点分析」
-  （双方与标的 / 金额与计价 / 工期 / 付款结算 / 质保与违约，未提及会明确说明）。
-- 接口：`POST /api/contracts/import`、`GET /api/contracts/{id}`、
-  `GET /api/contracts/{id}/download`、`POST /api/contracts/{id}/analyze`。
-- 演示合同：`examples/合同样例.xlsx / .docx / .pdf`（内容一致，可用于试导入）。
+---
 
-### 知识检索与联网搜索（v0.9.0）
+## ✨ 功能特性
 
-- 知识检索新增 🌐 联网模式：维基百科摘要 + 百度网页结果（可用时）+ 内置建筑知识兜底，
-  返回公开网页来源；可选 DeepSeek 依据检索结果生成联网摘要（带 [n] 来源编号）。
-- 联网结果明确标注来源（维基百科 / 百度 / 内置知识库），仅作行业通用知识参考；
-  合同问答仍严格只依据合同原文，不联网、不使用外部知识（红线）。
-- 检索历史：最近 10 条（含时间、本地/联网标记），可点击重新检索、可清空。
-- 对话历史：问答整轮对话保存在浏览器本地（最多 40 条），刷新后自动恢复，可一键清空。
-- 接口：`POST /api/web/search`（query / top_k / answer）。
+| 模块 | 核心能力 | 关键点 |
+| --- | --- | --- |
+| 📊 **成本监控** | 预算/成本来源录入、导入台账、导出 Excel、运行监控 | 规则引擎计算台账与偏差；黄警 ≥5% / 红警 ≥10% 可调 |
+| 📄 **合同导入** | PDF / Word / Excel 合同自动识别，自动填一行成本来源 | 名称/编号/金额/日期/甲方乙方/建议科目；文件存档可查看 |
+| 🔍 **合同详情** | 打开/下载合同原件、解析字段、**合同要点分析** | DeepSeek 仅依据合同原文总结；未提及会明确说明，不编造 |
+| 💬 **合同问答** | 合同条款自然语言问答，带出处引用 | 本地 bge-small-zh + BM25 混合检索；对话历史自动保存 |
+| 🌐 **知识检索** | 本地合同库 / 联网搜索（维基百科 + 百度 + 内置知识） | 🌐 开关切换；联网摘要带 [n] 来源编号，标注仅供参考 |
+| 🧾 **询价比价** | 五步闭环 + 规则引擎排名 + 最优报价分析 | ≥3 家供应商可比；口径（单位/税率/运费）自动检查 |
+| 📥 **报价单导入** | PDF / Word / Excel 自动识别报价行 | 导入后自动回填并比价，给出最优推荐与计算过程 |
+| 📤 **报告导出** | 审核通过后导出真实 PDF / Word | 报告快照固化；未审核不可导出 |
+| 📈 **评测看板** | 5 项质量指标 + 历史趋势迷你图 | 50 题检索评测约 6 秒；支持一键加载演示评测结果 |
 
-### 成本动态监控（V4 新增）
+---
 
-- 归集 Agent：对齐合同/进度款/签证 → 按科目归集实际成本。
-- 预警 Agent：按科目比对预算 vs 实际 → 超支预警（规则计算 + 依据解释）。
-- 问答 Agent：自然语言追问费用构成 → RAG 引用依据作答。
-- 三子 Agent 由 Lead 主控（`app/team.py` s13：文件邮箱 + 原子认领 + 任务工作区；`app/subagent.py` s06 独立上下文）。
+## 🖼 界面预览
 
-### RAG 知识库（V4 新增）
+<table>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/01-cost-monitor.jpg" alt="成本监控" /><br/><sub><b>成本监控</b>：预算 vs 实际、预警、合同导入</sub></td>
+    <td width="50%"><img src="docs/screenshots/02-inquiry.jpg" alt="询价比价" /><br/><sub><b>询价比价</b>：最优报价分析 + 10 家供应商排名</sub></td>
+  </tr>
+  <tr>
+    <td width="50%"><img src="docs/screenshots/03-contract-qa.jpg" alt="合同问答" /><br/><sub><b>合同问答</b>：知识检索（本地/联网）+ 历史记录</sub></td>
+    <td width="50%"><img src="docs/screenshots/04-contract-import.jpg" alt="合同详情" /><br/><sub><b>合同导入</b>：自动解析字段 + 合同要点分析</sub></td>
+  </tr>
+</table>
 
-多源文档切分 → 向量化（默认本地开源 bge-small-zh，免费；也可 EMBEDDING_BACKEND=api 接付费接口）→ SQLite 向量库 → 混合召回（向量 + BM25）→ 引用治理（每条结论带 `[来源#定位]`）。
+<p align="center">
+  <img src="docs/screenshots/05-eval.jpg" width="70%" alt="评测看板" /><br/>
+  <sub><b>评测看板</b>：5 项质量指标 + 历史趋势迷你图 + 一键演示</sub>
+</p>
 
-## 快速开始
+---
 
-```sh
-make bootstrap          # install + migrate
-cp .env.example .env    # 填 MODEL_API_KEY / DATA_KEY / SESSION_SECRET；可选 EMBEDDING_API_KEY
-make up                 # http://localhost:8000
-make test               # 跑测试
+## 🚦 设计红线
+
+这些是项目运行中**不可妥协**的约束，也是选择"规则引擎 + 可追溯"的原因：
+
+1. **数字只出自规则引擎**：金额、偏差、比价排名、预警级别全部由确定性规则计算，模型只解释、不计算。
+2. **模型不碰导出**：报告生成/导出发生在成本经理审核通过、快照固化之后；模型无导出权限。
+3. **合同原文不可篡改**：合同证据、OCR 原文只读；清洗与展示层不改动原始文本。
+4. **识别结果需人工确认**：合同/报价单自动识别是"候选字段"，进入比价与台账前必须人工确认。
+5. **联网只用于通用知识**：合同结论必须来自合同原文；联网检索仅服务建筑行业基础知识查询。
+
+---
+
+## 🧱 技术架构
+
+```mermaid
+flowchart LR
+    U[浏览器<br/>原生 JS 单页] -->|HTTP / JSON| A[FastAPI 应用<br/>app/main.py]
+    A --> R[规则引擎<br/>app/rules.py<br/>cost_rules]
+    A --> K[RAG 检索<br/>app/rag.py<br/>bge-small-zh + BM25/jieba]
+    A --> M[DeepSeek API<br/>问答 / 合同分析 / 联网摘要]
+    A --> W[联网检索<br/>app/websearch.py]
+    A --> S[(SQLite<br/>AES-256-GCM)]
+    A --> F[(本地文件<br/>data/contracts<br/>报告快照)]
+    K --> V[(向量库<br/>buildquote_vectors.db)]
 ```
 
-缺 `MODEL_API_KEY` / `DATA_KEY` / `SESSION_SECRET` 任一，启动失败；`EMBEDDING_API_KEY` 留空则 RAG 降级本地确定性向量（仅离线演示）。
+- 后端：Python 3.12 + FastAPI + Uvicorn（单进程、单 worker）
+- 前端：原生 JS 单页（无构建步骤），4 个视图
+- 存储：SQLite（AES-256-GCM 加密）+ 本地文件 + 本地向量库
+- 模型：DeepSeek（`deepseek-chat`，httpx 直连）；Embedding：本地 `bge-small-zh-v1.5`（fastembed）
+- 测试：pytest（72 个用例）
 
-## 配置与数据接入（V4）
+---
 
-| 配置 | 说明 |
-|---|---|
-| EMBEDDING_BACKEND | `local_model`（默认，bge-small-zh 免费本地）或 `api`（OpenAI 兼容付费） |
-| EMBEDDING_MODEL | 默认 `BAAI/bge-small-zh-v1.5`；api 后端时填对应模型名 |
-| ALERT_YELLOW_RATIO / ALERT_RED_RATIO | 预警阈值：偏差率 ≥5% 黄警、≥10% 红警（默认） |
-| COST_SUBJECTS_FILE | 成本科目口径文件（默认 skills/成本科目/subjects.json，9 个建筑科目） |
+## 📁 目录结构
 
-成本数据接入（CSV 列：source_type,subject,amount,source_id,note）：
-
-```sh
-# 生成空白 Excel 模板（成本来源 + 预算 + 填写说明 三张表）
-.venv/bin/python -m app.ingest --make-template examples/成本台账模板.xlsx
-# 跑样例 CSV
-.venv/bin/python -m app.ingest examples/sample_cost_sources.csv --budget examples/sample_budget.json
-# 跑你填好的 Excel
-.venv/bin/python -m app.ingest examples/成本台账模板.xlsx
+```text
+BuildQuote/
+├── app/
+│   ├── main.py            # FastAPI 入口：全部 HTTP 接口
+│   ├── serve.py           # 生产启动入口（调度 + 代理头）
+│   ├── rules.py           # 规则引擎：预算偏差 / 比价 / 报告快照
+│   ├── rag.py             # RAG：切块、检索、引用
+│   ├── qa.py              # 合同问答（自然语言 + 引用）
+│   ├── quote_import.py    # 报价单导入（PDF/Word/Excel）
+│   ├── contract_import.py # 合同导入与要点分析
+│   ├── websearch.py       # 联网检索（百科 + 网页 + 内置知识）
+│   ├── cost_io.py         # 成本台账导入 / 导出 Excel
+│   ├── export.py          # 真实报告导出（PDF / Word）
+│   ├── static/            # 前端页面、样式、脚本、logo
+│   └── ...
+├── skills/                # 成本科目、口径规则（可配置）
+├── evals/                 # 评测集（50 题检索 + 核心问答题）
+├── examples/              # 合同/报价单导入演示文件
+├── scripts/               # 知识库灌入、样例生成、公网隧道等
+├── tests/                 # pytest 用例
+├── Dockerfile / docker-compose.yml
+└── DEPLOY.md              # 上线部署指南
 ```
 
-## 目录
+> `data/`（数据库、向量库、合同原件、评测历史）为运行态数据，**不进入版本库**。
 
-```
-app/
-  main.py          # FastAPI 入口 + 询价/成本/RAG/团队/评测接口
-  agent_loop.py    # s01 Loop + s15 集成 Harness（Lead 主控）
-  prompts.py       # 模块化 Prompt 四层 + Lead/三子 Agent 系统提示词
-  subagent.py      # s06 子 Agent：独立上下文嵌套循环（≤30 轮）
-  team.py          # s13 团队：MessageBus + Teammate + 原子认领 + 任务工作区
-  cost_rules.py    # 成本科目 + 归集对齐 + 预警规则（纯函数，不经模型）
-  cost_tools.py    # 成本监控工具：归集/预警/问答/RAG 检索/知识入库/台账保存
-  embeddings.py    # embedding 三后端：本地 bge-small-zh / API / hash 降级
-  ingest.py        # 成本数据接入：CSV/Excel/JSON → 归集 + 预警；生成 Excel 模板
-  vectorstore.py   # SQLite 向量库（余弦相似度）
-  rag.py           # 多源切分 + 混合召回（向量+BM25）+ 引用治理
-  eval.py          # 评测指标：预警覆盖率/准确率、召回准确率、引用可追溯率等
-  export.py        # 真实报告导出：审核快照 → .docx/.pdf（python-docx + reportlab）
-  workflow.py      # s16 工作流运行时（询价五步）
-  tasks.py         # s10 任务系统（含团队认领复用）
-  background.py    # s11 后台任务
-  scheduler.py     # s12 定时调度（到期催收）
-  tools.py         # s02 工具系统：询价 9 工具 + Workflow + 成本 6 工具
-  permissions.py   # s03 权限系统
-  hooks.py         # s04 钩子系统
-  knowledge.py     # s07 技能加载 + BM25 + 联网参考价检索（白名单）
-  rules.py         # 询价规则引擎（价格计算）
-  storage.py       # SQLite 存储（AES 加密）
-  crypto.py        # AES-256-GCM
-  llm.py           # DeepSeek 客户端 + ModelRunner/MockRunner
-  config.py        # .env 加载与校验
-skills/
-  口径规则/SKILL.md   # 钢材/水泥/管材询价口径
-  成本科目/SKILL.md   # 房建成本科目与预警口径（V4）
-tests/             # pytest：规则、权限、任务、工作流、成本规则、RAG、团队
-evals/             # 离线评测样例（V4）
+---
+
+## 🚀 快速开始
+
+### 1. 环境要求
+
+- Python **3.12**
+- 可访问外网（DeepSeek API；首次启动下载本地向量模型约 100MB）
+
+### 2. 安装依赖
+
+```bash
+git clone https://github.com/liu-yanling/BuildQuote.git
+cd BuildQuote
+python -m venv .venv && source .venv/bin/activate
+pip install -r requirements.txt
 ```
 
-## 工具面
+### 3. 配置
 
-### 询价侧（V3，沿用）
-
-| 工具 | 权限 | 说明 |
-|---|---|---|
-| parse_quote_file | allow | 解析 .xlsx/.pdf/.md/.docx 报价文件 → 候选字段 |
-| record_manual_entry | allow | 成本经理内部代录报价（V3 不开放供应商自助填报） |
-| search_reference_price | allow | 联网检索白名单内公开造价站点（参考价非成交价） |
-| compute_price_rules | allow | 规则引擎计算（<3 家/3 份不进入比价） |
-| save_task_state | allow | 持久化五步进度与供应商回复状态 |
-| dispatch_async_job | allow | 超时转异步后台任务 |
-| send_reminder | allow | 超期未回自动催收（幂等） |
-| approve_report | ask | 成本经理审核（模型只发起，人工在界面完成） |
-| export_report | deny | 模型不得调用，审核通过后由后端导出 .pdf/.docx |
-| Workflow | allow | 运行保存好的五步比价编排，可断点续跑 |
-
-### 成本监控侧（V4 新增）
-
-| 工具 | 权限 | 说明 |
-|---|---|---|
-| ingest_knowledge | allow | 文档切块+向量化入库（RAG） |
-| search_cost_knowledge | allow | 混合召回检索依据（带引用） |
-| collect_cost_data | allow | 按科目归集实际成本（规则） |
-| alert_deviation | allow | 预算-实际比对+超支预警（规则） |
-| answer_cost_question | allow | RAG 依据+引用作答 |
-| save_cost_ledger | allow | 持久化台账/预警 |
-
-## 红线（不可违背）
-
-1. 价格计算与预警数字（偏差/超支率）全部由规则引擎完成，禁止模型心算。
-2. 关键字段由人确认；`export_report` 对模型 deny，`approve_report` 只发起待人工。
-3. 每个数字可追溯；每段文字引用来源；报告经成本经理审核后才可导出。
-4. 模型不把缺失数据补成事实；无依据时明说「未见依据」。
-
-## V4 接口
-
-- `POST /api/cost/monitor` 成本归集 + 预警
-- `POST /api/knowledge/ingest` 知识入库
-- `POST /api/knowledge/search` 混合召回
-- `POST /api/team/run` 三子 Agent 并行分派
-- `POST /api/eval/run` 离线评测
-- `POST /api/qa/ask` 合同问答（RAG + DeepSeek 带引用）
-
-## 问答 Agent
-
-```sh
-# 问合同（RAG 检索原文 → DeepSeek 带引用作答）
-.venv/bin/python -m app.qa "钢材采购合同的进度款支付比例和质保金怎么约定？"
-# 只看检索证据，不调模型
-.venv/bin/python -m app.qa "质保金" --no-model
+```bash
+cp .env.example .env
+# 必填：MODEL_API_KEY / DATA_KEY / SESSION_SECRET
+# 生成密钥：openssl rand -hex 32
 ```
 
-回答用**自然语言段落**：prompt 明确要求不用 Markdown、不分点、不用 [1] 编号（引用写成「按《合同编号》第X条……」）；
-`qa.naturalize_answer` 再做一层兜底清洗，前端按段落渲染，引用来源单独用标签展示。
+### 4. 启动
 
-## 报告导出（硬化阶段 · 真实 .pdf/.docx）
+```bash
+python -m app.serve          # 生产入口（含定时催收调度）
+# 或开发模式：uvicorn app.main:app --reload --port 8010
+```
 
-审核通过时后端用规则引擎重算并**固化报告快照**；导出只认这份快照，前端传的数字不被采信，
-每份报告带规则版本 + 计算快照 ID，可回溯报价明细。
+打开 http://127.0.0.1:8010 即可。
 
-- `POST /api/reports/approve`：审核（通过 / 打回）。通过时附 `report.items`（人工确认后的报价明细），
-  后端重算比价并写入报告快照；打回只记录审核状态。
-- `POST /api/reports/export`：生成真实 `.pdf` / `.docx` 文件（须审核通过；门禁不变，模型仍 deny）。
-- `GET /api/reports/{report_id}/download?format=.pdf|.docx`：下载已生成文件（attachment）。
+### 5. 初始化演示数据（可选）
 
-前端「⑤ 出报告」卡片有格式下拉（PDF / Word），导出后直接给下载链接。
+- 成本监控：点「加载样例」直接体验 9 个科目 / 16 笔成本来源；
+- 合同导入：用 `examples/合同样例.xlsx/.docx/.pdf` 试导入；
+- 报价单导入：用 `examples/报价单样例.xlsx/.docx/.pdf` 试导入；
+- 合同问答知识库：把合同 OCR 文本放到 `inbox/合同OCR文本/*.txt`，执行
+  `python scripts/ingest_contracts.py` 灌入向量库（文件名含合同编号，如 `JA-2025-010-04.txt`）。
 
-实现：`app/export.py`（python-docx 生成 docx；reportlab + STSong-Light 生成中文 PDF；A4 横向）。
-文件落在 `data/exports/`（`data/` 已 gitignore）。新增依赖见 `requirements.txt`。
+---
 
-## 成本台账导入 / 导出（v0.5.0 · 硬化阶段）
+## ⚙️ 配置说明
 
-成本监控页支持 Excel 台账的完整往返（openpyxl，`app/cost_io.py`）：
+| 环境变量 | 必填 | 说明 |
+| --- | --- | --- |
+| `MODEL_API_KEY` | ✅ | DeepSeek API Key |
+| `MODEL_BASE_URL` | | 默认 `https://api.deepseek.com` |
+| `MODEL_NAME` | | 默认 `deepseek-chat` |
+| `MODEL_TIMEOUT` | | 模型超时秒数，默认 60 |
+| `DATA_KEY` | ✅ | AES-256-GCM 密钥（≥32 字符，`openssl rand -hex 32`） |
+| `SESSION_SECRET` | ✅ | 会话密钥（≥32 字符） |
+| `DB_PATH` | | SQLite 路径，默认 `data/buildquote.db` |
+| `EMBEDDING_BACKEND` | | 默认 `local_model`（本地 bge-small-zh，免费） |
+| `ALERT_YELLOW_RATIO` | | 黄警阈值，默认 `0.05` |
+| `ALERT_RED_RATIO` | | 红警阈值，默认 `0.10` |
+| `APP_USERNAME` / `APP_PASSWORD` | | 可选：公网访问开启 HTTP Basic 登录 |
 
-- `GET /api/cost/template`：下载模板（预算 / 成本来源 / 填写说明 三张表，含科目下拉）。
-- `POST /api/cost/import`：上传 Excel（模板或导出文件均可，兼容旧版 5 列模板）→ 回填前端两张表。
-- `POST /api/cost/export`：导出完整台账（预算 / 成本来源 / 台账 / 说明，含合计行与按来源类型小计；
-  台账行由规则引擎归集计算）。
-- 前端操作：`导出模板` → 填表 → `导入台账`；或直接 `导出 Excel` 备份当前台账。
-- 输入表本人实时合计/占比（仅界面展示），正式数字仍只由规则引擎计算。
+> `.env` 已被 `.gitignore` 忽略，**切勿提交**。
 
-## 评测看板（v0.8.0 · 一眼看懂 + 趋势图）
+---
 
-- 顶部 5 张指标卡：**检索召回率 / 问答引用命中率 / 预警覆盖率 / 预警准确率 / 引用可追溯率**
-  （百分比 + 达标/待优化/不达标配色 + 迷你趋势折线图：每个点带日期时间，首末时间标注）。
-- 指标历史自动持久化（`data/eval_history.json`，每指标最多 30 个点），每次评测追加；刷新后曲线仍在。
-- **加载演示评测结果**：不调模型、不导入真实数据，一键填充 5 个指标 + 演示趋势（标注「演示数据」）。
-- ① 问答准确度抽测（预设标准答案的题）：
-  - 检索召回评测：50 道标准题，服务端批量，约 6 秒；
-  - 问答实跑评测：抽样 8 题调 DeepSeek 完整作答核对引用，约 40 秒。
-- ② 离线指标评测（样例数据）：秒出，自然语言解释，原始 JSON 收进「高级」折叠。
-- 作用：验证「找得到依据、答得有出处、预警不漏不误报」，给非技术同事看的验收面板。
+## ☁️ 部署上线
 
-## 验证## 验证## 验证
+完整步骤见 **[DEPLOY.md](DEPLOY.md)**，最简方式：
 
-在引擎根目录运行 `blueprint verify`（或对应工作区路径），差距报告写入 `../verify/`。
+```bash
+cp .env.example .env && vi .env     # 填 3 个必填项
+docker compose up -d --build        # 服务器上一条命令
+curl http://127.0.0.1:8010/health   # {"status":"ok", ...}
+```
+
+- 域名 + HTTPS：用 Caddy 反代 `127.0.0.1:8010`（自动证书），Nginx 示例见 DEPLOY.md
+- 数据持久化：`data/` 卷（SQLite / 向量库 / 合同原件 / 评测历史）
+- 健康检查：`GET /health`
+- 临时公网演示：`bash scripts/start_public_tunnel.sh`（Serveo 临时地址，URL 不固定）
+
+---
+
+## 🧪 测试与评测
+
+```bash
+# 单元测试（72 个用例，覆盖规则/导出/导入/评测/问答）
+pytest -q
+
+# 问答抽查（命令行）
+PYTHONPATH=. .venv/bin/python scripts/eval_qa.py
+```
+
+评测看板（页面内）：
+
+- 检索召回评测：50 道标准题，约 6 秒；
+- 问答实跑评测：抽样 8 题调 DeepSeek 完整作答，约 40 秒；
+- 离线指标评测：样例数据即时出结果；
+- 一键加载演示评测结果（无需真实数据）。
+
+---
+
+## ❓ 常见问题
+
+<details>
+<summary><b>启动报「缺少必需配置」？</b></summary>
+`.env` 未填 `MODEL_API_KEY` / `DATA_KEY` / `SESSION_SECRET`，按 <a href="#-配置说明">配置说明</a>补齐。
+</details>
+
+<details>
+<summary><b>页面能开但问答/分析报错？</b></summary>
+检查 DeepSeek Key 是否有效、账户余额、服务器是否能访问 <code>api.deepseek.com</code>。
+</details>
+
+<details>
+<summary><b>合同/报价单识别不准？</b></summary>
+自动识别是候选字段，识别后请人工核对金额/日期；扫描版 PDF 需先 OCR。
+</details>
+
+<details>
+<summary><b>能否多 worker 部署？</b></summary>
+不建议。SQLite、本地向量库、定时催收按单进程设计，请保持 <b>单 worker</b>。
+</details>
+
+---
+
+## 🗓 版本记录
+
+| 版本 | 主要内容 |
+| --- | --- |
+| v0.5.3 | 真实报告导出（PDF/Word）、成本台账导入导出、评测看板上线 |
+| v0.6.0 | 询价五步演示流程重做（演示数据前置 + 步骤引导） |
+| v0.7.0 | 报价单导入（PDF/Word/Excel）+ 最优报价分析 + 10 条演示数据 |
+| v0.8.0 | 评测提速到 50 题 / 6 秒 + 演示一键加载 + 指标趋势图 |
+| v0.9.0 | 知识检索联网搜索（🌐）+ 检索/对话历史 |
+| v0.10.0 | 成本来源去掉来源类型列 + 合同导入自动填行 + 合同查看/要点分析 |
+
+---
+
+## 🗺 Roadmap
+
+- [ ] 多项目 / 多企业空间与权限体系（当前为单项目演示）
+- [ ] 合同模板库与条款抽取审核流
+- [ ] 成本预测（趋势外推）与月度对比报表
+- [ ] 报告在线预览（PDF.js）与电子签章
+- [ ] 移动端适配
+
+---
+
+## 📄 许可与联系
+
+- 本项目为私有项目，未经授权请勿公开分发。
+- 作者：刘燕玲 · GitHub [@liu-yanling](https://github.com/liu-yanling)
+
+<p align="center"><sub>BuildQuote · 让每一笔成本都有据可查</sub></p>
