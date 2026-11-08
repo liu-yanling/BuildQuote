@@ -4,7 +4,9 @@
 """
 from __future__ import annotations
 
+import base64
 import json
+import os
 import logging
 import threading
 import time
@@ -47,6 +49,29 @@ rag = RagEngine(embedder, vector_store)
 
 app = FastAPI(title="BuildQuote", version="0.5.0")
 
+
+
+# 可选访问控制：设置 APP_USERNAME / APP_PASSWORD 后，公网访问需 HTTP Basic 登录
+_APP_USER = os.getenv("APP_USERNAME", "").strip()
+_APP_PASS = os.getenv("APP_PASSWORD", "").strip()
+
+
+@app.middleware("http")
+async def _optional_basic_auth(request: Request, call_next):
+    if not (_APP_USER and _APP_PASS):
+        return await call_next(request)
+    header = request.headers.get("authorization", "")
+    if header.startswith("Basic "):
+        try:
+            user, pwd = base64.b64decode(header[6:]).decode("utf-8").split(":", 1)
+        except Exception:  # noqa: BLE001
+            user = pwd = ""
+        if user == _APP_USER and pwd == _APP_PASS:
+            return await call_next(request)
+    from fastapi.responses import Response as _Resp
+
+    return _Resp(status_code=401, content="BuildQuote 需要登录",
+                 media_type="text/plain", headers={"WWW-Authenticate": 'Basic realm="BuildQuote"'})
 
 @app.middleware("http")
 async def _static_cache_headers(request: Request, call_next):
