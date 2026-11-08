@@ -13,7 +13,7 @@ ITEMS = [
      "unit_price": 3580, "quantity": 100, "tax_rate": 0.13, "freight": 200},
     {"supplier": "成都建材供应", "material": "螺纹钢", "spec": "HRB400 Φ20", "unit": "吨",
      "unit_price": 3620, "quantity": 100, "tax_rate": 0.13, "freight": 150},
-    {"supplier": "绵阳金属材料", "material": "螺纹钢", "spec": "HRB400 Φ20", "unit": "吨",
+    {"supplier": "成都金属材料", "material": "螺纹钢", "spec": "HRB400 Φ20", "unit": "吨",
      "unit_price": 3560, "quantity": 100, "tax_rate": 0.13, "freight": 260},
 ]
 
@@ -32,7 +32,7 @@ def test_snapshot_recomputes_with_rules_engine():
     assert snap["snapshot_id"] == snap["comparison"]["snapshot_id"]
     assert snap["rule_version"] == snap["comparison"]["rule_version"]
     # 排名由规则引擎按含税单价升序给出：3560 * 1.13 最低
-    assert [r["supplier"] for r in snap["comparison"]["ranking"]][0] == "绵阳金属材料"
+    assert [r["supplier"] for r in snap["comparison"]["ranking"]][0] == "成都金属材料"
 
 
 def test_snapshot_requires_items():
@@ -57,7 +57,7 @@ def test_detail_rows_include_quantity_and_rule_numbers():
     assert header[6] == "数量"
     body = rows[1:]
     assert all(r[6] == "100" for r in body)          # 数量来自规则引擎快照
-    assert body[0][1] == "绵阳金属材料"               # 排名第一
+    assert body[0][1] == "成都金属材料"               # 排名第一
     assert body[0][5] == "4,022.80"                  # 含税单价
     assert body[0][7] == "402,540.00"                # 含税总价
     assert body[0][8] == "13.0%"                     # 税率

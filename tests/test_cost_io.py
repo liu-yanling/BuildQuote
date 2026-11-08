@@ -9,7 +9,7 @@ BUDGET = [{"subject": "人工费", "budget": 1000, "note": "劳务合同"},
           {"subject": "材料费", "budget": 2000, "note": "钢材/商砼"}]
 SOURCES = [
     {"source_type": "合同", "subject": "劳务", "amount": 620, "source_id": "HT-RG-001",
-     "date": "2026-09-30", "supplier": "绵阳建工劳务有限公司", "note": "人工费合同累计"},
+     "date": "2026-09-30", "supplier": "成都建工劳务有限公司", "note": "人工费合同累计"},
     {"source_type": "进度款", "subject": "钢材", "amount": 1200, "source_id": "JD-2026-09",
      "date": "2026-10-25", "supplier": "四川钢材商贸有限公司", "note": "9 月进度款"},
 ]
@@ -68,7 +68,7 @@ def test_parse_export_roundtrip():
     parsed = cost_io.parse_ledger_bytes(raw)
     assert [r["subject"] for r in parsed["budget_rows"]] == ["人工费", "材料费"]
     assert len(parsed["sources"]) == 2
-    assert parsed["sources"][0]["supplier"] == "绵阳建工劳务有限公司"
+    assert parsed["sources"][0]["supplier"] == "成都建工劳务有限公司"
     assert parsed["sources"][0]["date"] == "2026-09-30"
 
 
