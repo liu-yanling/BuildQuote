@@ -39,4 +39,4 @@ jobs:
           DATA_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef
           SESSION_SECRET: 0123456789abcdef0123456789abcdef0123456789abcdef
           DB_PATH: data/ci-test.db
-        run: pytest -q
+        run: python -m pytest -q
