@@ -128,6 +128,114 @@ function calcTotals() {
     const diff = sourceTotal - budgetTotal;
     sSum.textContent = '合计 ' + fmtMoney(sourceTotal) + ' 万元（较预算 ' + (diff >= 0 ? '+' : '') + fmtMoney(diff) + '）';
   }
+  renderTypeSubtotals(sourceRows);
+}
+
+/* 按来源类型（合同 / 进度款 / 签证）实时小计 */
+function renderTypeSubtotals(sourceRows) {
+  const box = document.getElementById('source-subtotals');
+  if (!box) return;
+  const groups = new Map();
+  sourceRows.forEach(tr => {
+    const type = tr.querySelector('.c-type').value.trim() || '未分类';
+    const amount = parseFloat(tr.querySelector('.c-amount').value) || 0;
+    const g = groups.get(type) || { total: 0, count: 0 };
+    g.total += amount; g.count += 1;
+    groups.set(type, g);
+  });
+  const order = ['合同', '进度款', '签证'];
+  const entries = [...groups.entries()].sort((a, b) => {
+    const ia = order.indexOf(a[0]); const ib = order.indexOf(b[0]);
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a[0].localeCompare(b[0]);
+  });
+  box.innerHTML = entries.length
+    ? '<span class="type-label">来源类型小计</span>' + entries.map(([type, g]) =>
+        '<span class="type-chip"><b>' + esc(type) + '</b>' + fmtMoney(g.total) + ' 万元<em>' + g.count + ' 笔</em></span>'
+      ).join('')
+    : '';
+}
+
+/* 导入 / 导出（模板、完整台账） */
+function downloadBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  setTimeout(() => { URL.revokeObjectURL(a.href); a.remove(); }, 1500);
+}
+function monitorMsg(html) {
+  const el = document.getElementById('monitor-result');
+  if (el) el.innerHTML = html;
+}
+async function exportTemplate() {
+  try {
+    const resp = await fetch('/api/cost/template', { cache: 'no-store' });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    downloadBlob(await resp.blob(), '成本台账模板.xlsx');
+    monitorMsg('<div class="empty">已下载「成本台账模板.xlsx」：预算 / 成本来源 / 填写说明 三张表，填好后点「导入台账」。</div>');
+  } catch (e) {
+    monitorMsg('<div class="empty">模板下载失败：' + esc(String(e.message || e)) + '</div>');
+  }
+}
+async function exportExcel() {
+  const budget_rows = readBudgetRows();
+  const sources = readSources();
+  if (!budget_rows.length && !sources.length) {
+    monitorMsg('<div class="empty">请先填写预算 / 成本来源，或点「加载样例」后再导出。</div>');
+    return;
+  }
+  setBusy('monitor-btn', true, '导出中…');
+  try {
+    const resp = await fetch('/api/cost/export', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        budget_rows: budget_rows, sources: sources,
+        yellow_ratio: parseFloat(document.getElementById('yellow').value) || 0.05,
+        red_ratio: parseFloat(document.getElementById('red').value) || 0.10
+      })
+    });
+    if (!resp.ok) throw new Error('HTTP ' + resp.status);
+    downloadBlob(await resp.blob(), '成本台账.xlsx');
+    monitorMsg('<div class="empty">已导出「成本台账.xlsx」：预算 ' + budget_rows.length + ' 项 / 成本来源 ' +
+      sources.length + ' 笔（含台账与合计行）。</div>');
+  } catch (e) {
+    monitorMsg('<div class="empty">导出失败：' + esc(String(e.message || e)) + '</div>');
+  }
+  setBusy('monitor-btn', false);
+}
+function triggerImport() {
+  const input = document.getElementById('ledger-file');
+  if (input) input.click();
+}
+function loadLedgerRows(budget_rows, sources) {
+  document.getElementById('budget-tbody').innerHTML = '';
+  document.getElementById('source-tbody').innerHTML = '';
+  (budget_rows || []).forEach(r => addBudgetRow(r.subject, r.budget, r.note));
+  (sources || []).forEach(r => addSourceRow(r.source_type, r.subject, r.amount, r.source_id, r.date, r.supplier, r.note));
+  calcTotals();
+}
+async function handleImportFile(ev) {
+  const input = ev && ev.target;
+  const file = input && input.files ? input.files[0] : null;
+  if (!file) return;
+  input.value = '';
+  try {
+    const buf = await file.arrayBuffer();
+    const resp = await fetch('/api/cost/import', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/octet-stream' },
+      body: buf
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error((d && (d.detail || d.error)) || ('HTTP ' + resp.status));
+    const nb = (d.budget_rows || []).length, ns = (d.sources || []).length;
+    loadLedgerRows(d.budget_rows, d.sources);
+    monitorMsg('<div class="empty">已导入台账：预算 ' + nb + ' 项 / 成本来源 ' + ns + ' 笔。点「运行监控」查看归集与预警。</div>');
+  } catch (e) {
+    monitorMsg('<div class="empty">导入失败：' + esc(String(e.message || e)) + '</div>');
+  }
 }
 
 function readBudgetRows() {

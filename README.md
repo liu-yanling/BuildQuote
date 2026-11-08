@@ -161,6 +161,17 @@ evals/             # 离线评测样例（V4）
 实现：`app/export.py`（python-docx 生成 docx；reportlab + STSong-Light 生成中文 PDF；A4 横向）。
 文件落在 `data/exports/`（`data/` 已 gitignore）。新增依赖见 `requirements.txt`。
 
+## 成本台账导入 / 导出（v0.5.0 · 硬化阶段）
+
+成本监控页支持 Excel 台账的完整往返（openpyxl，`app/cost_io.py`）：
+
+- `GET /api/cost/template`：下载模板（预算 / 成本来源 / 填写说明 三张表，含科目下拉）。
+- `POST /api/cost/import`：上传 Excel（模板或导出文件均可，兼容旧版 5 列模板）→ 回填前端两张表。
+- `POST /api/cost/export`：导出完整台账（预算 / 成本来源 / 台账 / 说明，含合计行与按来源类型小计；
+  台账行由规则引擎归集计算）。
+- 前端操作：`导出模板` → 填表 → `导入台账`；或直接 `导出 Excel` 备份当前台账。
+- 输入表本人实时合计/占比（仅界面展示），正式数字仍只由规则引擎计算。
+
 ## 验证
 
 在引擎根目录运行 `blueprint verify`（或对应工作区路径），差距报告写入 `../verify/`。

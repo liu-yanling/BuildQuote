@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BuildQuote · 成本监控工作台</title>
-<link rel="stylesheet" href="/static/style.css">
+<link rel="stylesheet" href="/static/style.css?v=0.5.0">
 </head>
 <body>
 <div class="layout">
@@ -23,7 +23,7 @@
 
     <div class="sidebar-foot">
       <div id="health" class="health"><span class="dot"></span>连接中…</div>
-      <div class="ver">v0.4.0 · 单进程单体</div>
+      <div class="ver">v0.5.0 · 单进程单体</div>
     </div>
   </aside>
 
@@ -39,7 +39,11 @@
         <div class="head-actions">
           <label class="lbl">黄警 <input id="yellow" type="number" step="0.01" value="0.05"></label>
           <label class="lbl">红警 <input id="red" type="number" step="0.01" value="0.10"></label>
+          <input id="ledger-file" type="file" accept=".xlsx,.xls" hidden onchange="handleImportFile(event)">
           <button class="btn ghost" onclick="loadSample()">加载样例</button>
+          <button class="btn ghost" onclick="triggerImport()">导入台账</button>
+          <button class="btn ghost" onclick="exportTemplate()">导出模板</button>
+          <button class="btn ghost" onclick="exportExcel()">导出 Excel</button>
           <button id="monitor-btn" class="btn primary" onclick="runMonitor()">运行监控</button>
         </div>
       </div>
@@ -71,6 +75,7 @@
                 <tfoot><tr class="total-row"><td colspan="2">合计</td><td class="num" id="source-total">0.00</td><td colspan="5" class="muted" id="source-total-note">共 0 笔</td></tr></tfoot>
               </table>
             </div>
+            <div id="source-subtotals" class="type-subtotals"></div>
             <p class="hint">科目可用别名：劳务→人工费、钢材/商品混凝土→材料费、措施费→其他直接费、现场经费→现场管理费 等；日期 / 供应商 / 备注会一并写入台账来源明细。</p>
           </div>
         </div>
@@ -263,6 +268,6 @@
   </main>
 </div>
 
-<script src="/static/app.js"></script>
+<script src="/static/app.js?v=0.5.0"></script>
 </body>
 </html>

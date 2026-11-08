@@ -9,12 +9,12 @@ import time
 from pathlib import Path
 from typing import Any
 
-from fastapi import FastAPI, HTTPException
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi import FastAPI, HTTPException, Request
+from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import (cost_rules, cost_tools, eval as eval_mod, export as export_mod,
+from app import (cost_io, cost_rules, cost_tools, eval as eval_mod, export as export_mod,
                  permissions, prompts, rules, scheduler, team as team_mod, tools,
                  workflow)
 from app.agent_loop import Harness
@@ -43,7 +43,19 @@ embedder = make_embedder(settings)
 vector_store = VectorStore(settings.db_path.with_name("buildquote_vectors.db"))
 rag = RagEngine(embedder, vector_store)
 
-app = FastAPI(title="BuildQuote", version="0.3.0")
+app = FastAPI(title="BuildQuote", version="0.5.0")
+
+
+@app.middleware("http")
+async def _static_cache_headers(request: Request, call_next):
+    """静态资源禁止启发式缓存：改完前端刷新即生效，避免「新 HTML + 旧 JS」版本错位。"""
+    response = await call_next(request)
+    path = request.url.path
+    if path.startswith("/static/"):
+        response.headers["Cache-Control"] = "no-cache, must-revalidate"
+    elif path == "/" or path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    return response
 
 
 def _user_from(payload: dict) -> User:
@@ -350,6 +362,61 @@ def cost_monitor(payload: CostMonitorIn) -> dict:
         "budget_rows": payload.budget_rows, "sources": payload.sources,
         "yellow_ratio": payload.yellow_ratio or cost_rules.DEFAULT_YELLOW_RATIO,
         "red_ratio": payload.red_ratio or cost_rules.DEFAULT_RED_RATIO}, ctx)
+
+
+class CostExportIn(BaseModel):
+    budget_rows: list[dict[str, Any]] = []
+    sources: list[dict[str, Any]] = []
+    yellow_ratio: float | None = None
+    red_ratio: float | None = None
+
+
+@app.get("/api/cost/template")
+def cost_template() -> Response:
+    """下载成本台账模板（预算 / 成本来源 / 填写说明 三张表）。"""
+    data = cost_io.build_template_bytes()
+    return Response(content=data, media_type=cost_io.XLSX_MEDIA,
+                    headers={"Content-Disposition": 'attachment; filename="cost_ledger_template.xlsx"',
+                             "Cache-Control": "no-store"})
+
+
+@app.post("/api/cost/export")
+def cost_export(payload: CostExportIn) -> Response:
+    """导出完整成本台账 Excel（预算 / 成本来源 / 台账 / 说明，含合计行）。"""
+    yellow = payload.yellow_ratio or cost_rules.DEFAULT_YELLOW_RATIO
+    red = payload.red_ratio or cost_rules.DEFAULT_RED_RATIO
+    sources = [cost_rules.CostSource(source_type=s.get("source_type", ""),
+                                     subject=s.get("subject", ""),
+                                     amount=float(s.get("amount", 0) or 0),
+                                     source_id=s.get("source_id", ""),
+                                     note=s.get("note", ""))
+               for s in payload.sources]
+    result = cost_rules.compute_cost_monitor(payload.budget_rows, sources,
+                                             yellow_ratio=yellow, red_ratio=red)
+    data = cost_io.build_export_bytes(payload.budget_rows, payload.sources,
+                                      ledger=result.get("ledger"),
+                                      yellow_ratio=yellow, red_ratio=red)
+    return Response(content=data, media_type=cost_io.XLSX_MEDIA,
+                    headers={"Content-Disposition": 'attachment; filename="cost_ledger.xlsx"',
+                             "Cache-Control": "no-store"})
+
+
+@app.post("/api/cost/import")
+async def cost_import(request: Request) -> dict:
+    """导入成本台账 Excel（模板/导出文件均可，兼容旧版 5 列模板）。"""
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="空文件")
+    if len(data) > 10 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件过大（上限 10MB）")
+    try:
+        parsed = cost_io.parse_ledger_bytes(data)
+    except Exception as exc:  # noqa: BLE001 —— 解析失败统一给 400
+        raise HTTPException(status_code=400, detail=f"无法解析 Excel 台账：{exc}")
+    if not parsed["budget_rows"] and not parsed["sources"]:
+        raise HTTPException(status_code=400,
+                            detail="未解析到预算或成本来源数据，请使用「导出模板」填写后再导入")
+    return {"ok": True, **parsed}
 
 
 class KnowledgeIngestIn(BaseModel):
