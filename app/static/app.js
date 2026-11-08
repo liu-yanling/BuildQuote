@@ -670,14 +670,100 @@ const QA_GOLD = [
   ["边坡支护工程的付款方式？", "JA-2025-013"]
 ];
 
+/* 指标卡状态：跑完评测后写入；页面上的「一眼看懂」就靠它 */
+const EVAL_STATE = { retrieval: null, qa: null, alertCoverage: null, alertPrecision: null, citation: null };
+const METRIC_DEFS = [
+  { key: 'retrieval', label: '检索召回率', scope: '12 题金标准', desc: '问题找得到正确合同的比例（前 5 条里命中）', good: 0.9 },
+  { key: 'qa', label: '问答引用命中率', scope: '12 题实跑', desc: '回答引用的合同，确实是题目要求的那份', good: 0.9 },
+  { key: 'alertCoverage', label: '预警覆盖率', scope: '样例数据', desc: '该报警的科目，系统都报出来了（不遗漏）', good: 0.8 },
+  { key: 'alertPrecision', label: '预警准确率', scope: '样例数据', desc: '系统报出的预警，有多少是真的（不误报）', good: 0.8 },
+  { key: 'citation', label: '引用可追溯率', scope: '样例数据', desc: '回答里带合同出处的比例（可回溯原文）', good: 0.9 }
+];
+
+function _pct(v) { return v == null ? '—' : (Number(v) * 100).toFixed(1) + '%'; }
+
+function renderMetrics() {
+  const box = document.getElementById('eval-metrics');
+  if (!box) return;
+  box.innerHTML = METRIC_DEFS.map(def => {
+    const st = EVAL_STATE[def.key];
+    const waiting = !st || st.value == null;
+    let cls = 'pending', badge = '待评测', sub = def.scope;
+    if (!waiting) {
+      const ratio = Number(st.value);
+      if (ratio >= def.good) { cls = 'good'; badge = '达标'; }
+      else if (ratio >= def.good * 0.75) { cls = 'warn'; badge = '待优化'; }
+      else { cls = 'bad'; badge = '不达标'; }
+      sub = st.hint || def.scope;
+    }
+    return '<div class="metric-card ' + cls + '">' +
+      '<div class="m-top"><span class="m-label">' + esc(def.label) + '</span><span class="m-badge">' + esc(badge) + '</span></div>' +
+      '<div class="m-value">' + (waiting ? '—' : _pct(st.value)) + '</div>' +
+      '<div class="m-sub">' + esc(sub) + '</div>' +
+      '<div class="m-desc">' + esc(def.desc) + '</div></div>';
+  }).join('');
+}
+
+function evalSampleSummary() {
+  const s = SAMPLE_EVALS;
+  const parts = [];
+  if (s.alerts) parts.push('预警检查（应报 ' + (s.alerts.gold || []).length + ' 个科目）');
+  if (s.retrieval) parts.push('检索检查（应命中 ' + (s.retrieval.gold || []).length + ' 条）');
+  if (s.answers) parts.push('引用检查（' + (s.answers || []).length + ' 条回答）');
+  if (s.answer_accuracy) parts.push('回答准确率（' + (s.answer_accuracy.gold || []).length + ' 项）');
+  return '样例包含：' + parts.join(' · ');
+}
+
 function loadEvalSample() {
-  document.getElementById('eval-samples').value = JSON.stringify(SAMPLE_EVALS, null, 2);
-  document.getElementById('eval-result').innerHTML = '';
+  const el = document.getElementById('eval-samples');
+  if (el) el.value = JSON.stringify(SAMPLE_EVALS, null, 2);
+  const sum = document.getElementById('eval-sample-summary');
+  if (sum) sum.innerHTML = '<span class="muted">' + esc(evalSampleSummary()) + '</span>';
+  const res = document.getElementById('eval-result');
+  if (res) res.innerHTML = '';
 }
-function metricCard(k, v) {
-  const val = v == null ? '—' : (typeof v === 'number' ? fmtPct(v) : v);
-  return '<div class="metric"><div class="m-label">' + esc(k) + '</div><div class="m-value">' + esc(val) + '</div></div>';
+
+/* 离线样例结果 → 自然语言说明（不再展示原始 JSON） */
+function renderOfflineResult(d) {
+  const lines = [];
+  const alerts = d['预警'];
+  if (alerts) {
+    const cov = alerts['预警覆盖率'], prec = alerts['预警准确率'];
+    const hit = alerts['命中'];
+    const miss = (hit == null || alerts['应预警数'] == null) ? '—' : (alerts['应预警数'] - hit);
+    const falseAlarm = (hit == null || alerts['系统预警数'] == null) ? '—' : (alerts['系统预警数'] - hit);
+    lines.push({
+      ok: (cov == null ? 0 : cov) >= 0.8 && (prec == null ? 0 : prec) >= 0.8,
+      title: '预警检查',
+      text: '应预警 ' + alerts['应预警数'] + ' 个科目，系统报出 ' + alerts['系统预警数'] + ' 个、命中 ' + hit +
+        ' 个 → 覆盖率 ' + _pct(cov) + '（漏报 ' + miss + ' 个），准确率 ' + _pct(prec) + '（误报 ' + falseAlarm + ' 个）。'
+    });
+  }
+  const ret = d['检索'];
+  if (ret) {
+    lines.push({
+      ok: (ret['召回准确率'] == null ? 0 : ret['召回准确率']) >= 0.8,
+      title: '检索检查',
+      text: '命中 ' + ret['命中'] + ' 条 → 召回准确率 ' + _pct(ret['召回准确率']) + '，召回率 ' + _pct(ret['召回率']) + '。'
+    });
+  }
+  if (d['引用可追溯率'] != null) {
+    lines.push({
+      ok: d['引用可追溯率'] >= 0.9,
+      title: '引用检查',
+      text: '样例回答中 ' + _pct(d['引用可追溯率']) + ' 带有合同出处（引用可追溯率）。'
+    });
+  }
+  if (d['回答准确率'] != null) {
+    lines.push({
+      ok: d['回答准确率'] >= 0.8,
+      title: '回答准确率',
+      text: '按样例比对，回答准确率 ' + _pct(d['回答准确率']) + '。'
+    });
+  }
+  return lines.map(l => '<div class="eval-line ' + (l.ok ? 'ok' : 'warn') + '"><b>' + esc(l.title) + '</b><span>' + esc(l.text) + '</span></div>').join('');
 }
+
 async function runEval() {
   let samples;
   try { samples = JSON.parse(document.getElementById('eval-samples').value); }
@@ -686,29 +772,34 @@ async function runEval() {
   const { ok, d } = await postJSON('/api/eval/run', { samples });
   setBusy('eval-run-btn', false);
   if (!ok) { document.getElementById('eval-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + '</div>'; return; }
-  const cards = Object.entries(d).map(([k, v]) => {
-    if (typeof v === 'object' && v !== null) {
-      return '<div class="metric-group"><b>' + esc(k) + '</b><div class="metric-row">' +
-        Object.entries(v).map(([kk, vv]) => metricCard(kk, vv)).join('') + '</div></div>';
-    }
-    return metricCard(k, v);
-  }).join('');
-  document.getElementById('eval-result').innerHTML = cards || '<div class="empty">无指标输出</div>';
+  const alerts = d['预警'] || {};
+  if (alerts['预警覆盖率'] != null) {
+    EVAL_STATE.alertCoverage = { value: alerts['预警覆盖率'], hint: '应报 ' + alerts['应预警数'] + ' 个 / 命中 ' + alerts['命中'] + ' 个' };
+  }
+  if (alerts['预警准确率'] != null) {
+    EVAL_STATE.alertPrecision = { value: alerts['预警准确率'], hint: '报出 ' + alerts['系统预警数'] + ' 个 / 命中 ' + alerts['命中'] + ' 个' };
+  }
+  if (d['引用可追溯率'] != null) EVAL_STATE.citation = { value: d['引用可追溯率'], hint: '样例回答引用检查' };
+  renderMetrics();
+  const html = renderOfflineResult(d);
+  document.getElementById('eval-result').innerHTML = html
+    ? '<div class="eval-lines">' + html + '</div>'
+    : '<div class="empty" style="padding:14px">样例未包含可计算指标，请检查 JSON 结构。</div>';
 }
 
 function renderGoldTable(results) {
   const el = document.getElementById('qa-gold-table');
   const rows = QA_GOLD.map(([q, contract], i) => {
-    let cell = '<span class="muted">—</span>';
+    let cell = '<span class="muted">待评测</span>';
     if (results) {
       const r = results[i];
-      if (r && r.hit) cell = '<span class="badge normal">✓ ' + esc(r.found || contract) + '</span>';
+      if (r && r.hit) cell = '<span class="badge normal">✓ 命中</span>';
       else if (r && r.error) cell = '<span class="badge yellow">' + esc(r.error) + '</span>';
       else if (r) cell = '<span class="badge red">✗ 未命中</span>';
     }
     return '<tr><td>' + (i + 1) + '</td><td>' + esc(q) + '</td><td class="mono">' + esc(contract) + '</td><td>' + cell + '</td></tr>';
   }).join('');
-  el.innerHTML = '<table class="result"><thead><tr><th style="width:32px">#</th><th>问题</th><th>应命中合同</th><th style="width:140px">结果</th></tr></thead><tbody>' + rows + '</tbody></table>';
+  el.innerHTML = '<table class="result"><thead><tr><th style="width:32px">#</th><th>问题</th><th>应命中合同</th><th style="width:110px">结果</th></tr></thead><tbody>' + rows + '</tbody></table>';
 }
 
 function hitsContainContract(hits, contract) {
@@ -735,8 +826,14 @@ async function runRetrievalEval() {
   }
   setBusy('eval-retrieval-btn', false);
   st.innerHTML = '';
-  const acc = (hitCount / QA_GOLD.length * 100).toFixed(1);
-  document.getElementById('eval-qa-status').innerHTML = '<b>检索召回准确率 top-5：' + hitCount + '/' + QA_GOLD.length + ' = ' + acc + '%</b>';
+  EVAL_STATE.retrieval = {
+    value: hitCount / QA_GOLD.length,
+    hint: '12 道题中 ' + hitCount + ' 道在前 5 条里命中正确合同'
+  };
+  renderMetrics();
+  document.getElementById('eval-qa-status').innerHTML =
+    '<b>检索召回率 ' + _pct(hitCount / QA_GOLD.length) + '</b>（' + hitCount + '/' + QA_GOLD.length +
+    ' 道题的前 5 条检索结果里，找到了应命中的合同）';
 }
 
 async function runQaEval() {
@@ -757,7 +854,14 @@ async function runQaEval() {
   }
   setBusy('eval-qa-btn', false);
   st.innerHTML = '';
-  document.getElementById('eval-qa-status').innerHTML = '<b>问答引用命中率：' + hitCount + '/' + QA_GOLD.length + ' = ' + (hitCount / QA_GOLD.length * 100).toFixed(1) + '%</b>';
+  EVAL_STATE.qa = {
+    value: hitCount / QA_GOLD.length,
+    hint: '12 道题中 ' + hitCount + ' 道回答引用到了应命中合同'
+  };
+  renderMetrics();
+  document.getElementById('eval-qa-status').innerHTML =
+    '<b>问答引用命中率 ' + _pct(hitCount / QA_GOLD.length) + '</b>（' + hitCount + '/' + QA_GOLD.length +
+    ' 道题的完整回答引用了应命中合同）';
 }
 
 /* ===== 启动 ===== */
@@ -777,6 +881,7 @@ document.addEventListener('DOMContentLoaded', () => {
   });
   loadEvalSample();
   renderGoldTable();
+  renderMetrics();
   renderSuppliers();
   updateStepper(1);
   checkHealth();

@@ -178,13 +178,45 @@ table.result tr:last-child td{border-bottom:none}
 .err-box{background:var(--red-bg);color:#7f1d1d;border:1px solid #fecaca;border-radius:9px;padding:12px 14px;font-size:13px;margin-bottom:10px}
 
 /* ===== 评测看板 ===== */
-.eval-grid{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.2fr);gap:18px;align-items:start}
+.eval-grid{display:grid;grid-template-columns:minmax(0,1.15fr) minmax(0,1fr);gap:18px;align-items:start}
 @media(max-width:1080px){.eval-grid{grid-template-columns:1fr}}
-.metric-group{margin-bottom:14px}
-.metric-group>b{font-size:13px;display:block;margin-bottom:8px}
-.metric-row{display:flex;flex-wrap:wrap;gap:10px}
-.metric{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:10px 16px;min-width:120px}
-.m-label{font-size:11.5px;color:var(--muted);margin-bottom:2px}
-.m-value{font-size:18px;font-weight:700;color:var(--text);font-variant-numeric:tabular-nums}
+
+/* 指标卡：一眼看懂的一排数字 */
+.metric-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:12px;margin-bottom:16px}
+.metric-card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:14px 16px;box-shadow:0 1px 2px rgba(16,24,40,.04)}
+.metric-card.pending{background:#f8fafc;border-style:dashed}
+.metric-card.good{background:#f0fdf4;border-color:#bbf7d0}
+.metric-card.warn{background:#fffbeb;border-color:#fde68a}
+.metric-card.bad{background:#fef2f2;border-color:#fecaca}
+.m-top{display:flex;align-items:center;justify-content:space-between;gap:8px}
+.metric-card .m-label{font-size:12px;color:var(--muted);font-weight:500}
+.m-badge{font-size:11px;padding:2px 8px;border-radius:99px;background:#e2e8f0;color:#475569;white-space:nowrap}
+.metric-card.good .m-badge{background:#dcfce7;color:#15803d}
+.metric-card.warn .m-badge{background:#fef3c7;color:#b45309}
+.metric-card.bad .m-badge{background:#fee2e2;color:#b91c1c}
+.metric-card .m-value{font-size:28px;font-weight:700;color:#0f172a;font-variant-numeric:tabular-nums;margin:6px 0 2px;line-height:1.1}
+.metric-card .m-sub{font-size:11.5px;color:#475569;margin-bottom:6px}
+.metric-card .m-desc{font-size:11.5px;color:var(--muted);line-height:1.5;border-top:1px dashed var(--line);padding-top:6px}
+
+/* 作用说明 */
+.eval-why{margin-bottom:16px}
+.eval-why-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:14px}
+.why-item{background:#f8fafc;border:1px solid var(--line);border-radius:10px;padding:12px 14px}
+.why-item b{font-size:13px;display:block;margin-bottom:6px;color:#0f172a}
+.why-item p{margin:0;font-size:12.5px;color:#475569;line-height:1.65}
+
+/* 离线样例结果：自然语言逐条 */
+.eval-sample-summary{margin:10px 0 4px;font-size:12.5px}
+.eval-lines{display:flex;flex-direction:column;gap:8px}
+.eval-line{border:1px solid var(--line);border-radius:9px;padding:10px 12px;font-size:12.5px;line-height:1.7;background:#f8fafc;color:#334155}
+.eval-line b{display:block;margin-bottom:2px;color:#0f172a;font-size:12.5px}
+.eval-line.ok{border-color:#bbf7d0;background:#f0fdf4}
+.eval-line.ok b{color:#15803d}
+.eval-line.warn{border-color:#fde68a;background:#fffbeb}
+.eval-line.warn b{color:#b45309}
+.eval-advanced{margin-top:10px}
+.eval-advanced summary{cursor:pointer;color:var(--muted);font-size:12.5px}
+.eval-advanced textarea{margin-top:8px}
+
 .gold-table{margin-top:12px;max-height:56vh;overflow-y:auto}
 .gold-table .mono{font-family:ui-monospace,monospace;font-size:12px;color:var(--primary)}

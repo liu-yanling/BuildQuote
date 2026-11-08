@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BuildQuote · 成本监控工作台</title>
-<link rel="stylesheet" href="/static/style.css?v=0.5.1">
+<link rel="stylesheet" href="/static/style.css?v=0.5.2">
 </head>
 <body>
 <div class="layout">
@@ -23,7 +23,7 @@
 
     <div class="sidebar-foot">
       <div id="health" class="health"><span class="dot"></span>连接中…</div>
-      <div class="ver">v0.5.1 · 单进程单体</div>
+      <div class="ver">v0.5.2 · 单进程单体</div>
     </div>
   </aside>
 
@@ -237,30 +237,47 @@
       <div class="page-head">
         <div>
           <h1>评测看板</h1>
-          <p class="sub">预警覆盖率 / 召回准确率 / 引用可追溯率 / 回答准确率</p>
+          <p class="sub">用「12 道金标准题 + 样例数据」检查系统靠不靠谱：找不找得到依据、答得准不准、预警漏没漏——指标一屏看清。</p>
+        </div>
+      </div>
+
+      <div class="metric-cards" id="eval-metrics"></div>
+
+      <div class="card eval-why">
+        <div class="card-head"><b>这个看板有什么用？</b></div>
+        <div class="eval-why-grid">
+          <div class="why-item"><b>① 检索能不能找到依据</b><p>同事问一句合同问题，系统先从 80 份合同里找条款。命中率低，说明找错了合同，后面回答就不可信。</p></div>
+          <div class="why-item"><b>② 回答有没有出处</b><p>每条结论都要带合同编号和条款位置（如《JA-2025-010-04》第八条）。引用可追溯率低，说明有编造风险。</p></div>
+          <div class="why-item"><b>③ 预警漏没漏、误报多不多</b><p>该报警的科目有没有报出来（覆盖率），报出来的预警是不是真的（准确率）。</p></div>
+          <div class="why-item"><b>④ 金标准由谁定</b><p>12 道题和应命中合同由成本经理人工标注（初版），评测只是拿人工标准检验系统，可继续扩充。</p></div>
         </div>
       </div>
 
       <div class="eval-grid">
         <div class="card">
-          <div class="card-head"><b>离线评测指标</b><span class="muted">编辑样例 JSON → 运行评测</span></div>
-          <textarea id="eval-samples" class="parse-text" rows="16" spellcheck="false"></textarea>
+          <div class="card-head"><b>① 金标准问答评测（12 题）</b><span class="muted">问题 → 应命中合同</span></div>
+          <p class="hint">先点「检索召回评测」：不调模型，只看每道题前 5 条检索结果里有没有正确合同；再点「问答实跑评测」：调 DeepSeek 完整作答，核对回答引用的合同是否命中。</p>
           <div class="row-actions">
-            <button class="btn ghost" onclick="loadEvalSample()">加载样例</button>
-            <button id="eval-run-btn" class="btn primary" onclick="runEval()">运行评测</button>
-          </div>
-          <div id="eval-result" class="result-box"></div>
-        </div>
-
-        <div class="card">
-          <div class="card-head"><b>QA 金标准评测（12 题）</b><span class="muted">问题 → 应命中合同</span></div>
-          <p class="hint">「检索召回评测」不调模型，走 /api/knowledge/search 看 top-5 是否命中应命中合同；「问答实跑评测」调 DeepSeek 走完整问答并核对引用。</p>
-          <div class="row-actions">
-            <button id="eval-retrieval-btn" class="btn primary" onclick="runRetrievalEval()">检索召回评测</button>
-            <button id="eval-qa-btn" class="btn ghost" onclick="runQaEval()">问答实跑评测（慢）</button>
+            <button id="eval-retrieval-btn" class="btn primary" onclick="runRetrievalEval()">运行检索召回评测（快）</button>
+            <button id="eval-qa-btn" class="btn ghost" onclick="runQaEval()">问答实跑评测（慢，约 1–3 分钟）</button>
           </div>
           <div id="eval-qa-status" class="muted" style="min-height:18px"></div>
           <div id="qa-gold-table" class="gold-table"></div>
+        </div>
+
+        <div class="card">
+          <div class="card-head"><b>② 离线指标评测（样例数据）</b><span class="muted">不调模型 · 秒出结果</span></div>
+          <p class="hint">用一组人工标注样例（该预警哪些科目、该命中哪几条、回答有没有出处）计算覆盖率 / 准确率；样例可编辑，用来核对指标口径。</p>
+          <div id="eval-sample-summary" class="eval-sample-summary"></div>
+          <div class="row-actions">
+            <button class="btn ghost" onclick="loadEvalSample()">加载样例</button>
+            <button id="eval-run-btn" class="btn primary" onclick="runEval()">运行样例评测</button>
+          </div>
+          <details class="eval-advanced">
+            <summary>高级：查看 / 编辑样例 JSON</summary>
+            <textarea id="eval-samples" class="parse-text" rows="12" spellcheck="false"></textarea>
+          </details>
+          <div id="eval-result" class="result-box"></div>
         </div>
       </div>
     </section>
@@ -268,6 +285,6 @@
   </main>
 </div>
 
-<script src="/static/app.js?v=0.5.1"></script>
+<script src="/static/app.js?v=0.5.2"></script>
 </body>
 </html>
