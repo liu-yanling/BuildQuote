@@ -77,24 +77,26 @@ function addBudgetRow(subject, budget, note) {
   document.getElementById('budget-tbody').appendChild(tr);
   calcTotals();
 }
-function addSourceRow(type, subject, amount, id, date, supplier, note) {
+function addSourceRow(subject, amount, id, date, supplier, note, contractId) {
   const tr = document.createElement('tr');
-  tr.innerHTML = '<td><input class="c-type" value="' + esc(type || '') + '"></td>' +
-    '<td><input class="c-subject" value="' + esc(subject || '') + '" placeholder="科目/别名"></td>' +
+  if (contractId) tr.dataset.contractId = contractId;
+  tr.innerHTML = '<td><input class="c-subject" value="' + esc(subject || '') + '" placeholder="科目/别名"></td>' +
     '<td><input class="c-amount" type="number" step="0.01" value="' + esc(amount == null ? '' : amount) + '"></td>' +
     '<td><input class="c-id" value="' + esc(id || '') + '"></td>' +
     '<td><input class="c-date" type="date" value="' + esc(date || '') + '"></td>' +
     '<td><input class="c-supplier" value="' + esc(supplier || '') + '" placeholder="供应商/对方"></td>' +
     '<td><input class="c-note" value="' + esc(note || '') + '" placeholder="备注"></td>' +
-    '<td><button class="btn-mini del" onclick="this.closest(\'tr\').remove();calcTotals()">删除</button></td>';
+    '<td class="row-ops">' + (contractId ? '<button class="btn-mini" onclick="openContract(\'' + contractId + '\')">合同</button>' : '') +
+    '<button class="btn-mini del" onclick="this.closest(\'tr\').remove();calcTotals()">删除</button></td>';
   document.getElementById('source-tbody').appendChild(tr);
   calcTotals();
+  return tr;
 }
 function loadSample() {
   document.getElementById('budget-tbody').innerHTML = '';
   document.getElementById('source-tbody').innerHTML = '';
   SAMPLE_BUDGET.forEach(r => addBudgetRow(r[0], r[1], r[2]));
-  SAMPLE_SOURCES.forEach(r => addSourceRow(r[0], r[1], r[2], r[3], r[4], r[5], r[6]));
+  SAMPLE_SOURCES.forEach(r => addSourceRow(r[1], r[2], r[3], r[4], r[5], r[6]));
   calcTotals();
   document.getElementById('monitor-result').innerHTML = '<div class="empty">已加载样例数据（9 个科目 / 16 笔成本来源），点「运行监控」查看归集台账与预警。</div>';
 }
@@ -128,32 +130,10 @@ function calcTotals() {
     const diff = sourceTotal - budgetTotal;
     sSum.textContent = '合计 ' + fmtMoney(sourceTotal) + ' 万元（较预算 ' + (diff >= 0 ? '+' : '') + fmtMoney(diff) + '）';
   }
-  renderTypeSubtotals(sourceRows);
 }
 
 /* 按来源类型（合同 / 进度款 / 签证）实时小计 */
-function renderTypeSubtotals(sourceRows) {
-  const box = document.getElementById('source-subtotals');
-  if (!box) return;
-  const groups = new Map();
-  sourceRows.forEach(tr => {
-    const type = tr.querySelector('.c-type').value.trim() || '未分类';
-    const amount = parseFloat(tr.querySelector('.c-amount').value) || 0;
-    const g = groups.get(type) || { total: 0, count: 0 };
-    g.total += amount; g.count += 1;
-    groups.set(type, g);
-  });
-  const order = ['合同', '进度款', '签证'];
-  const entries = [...groups.entries()].sort((a, b) => {
-    const ia = order.indexOf(a[0]); const ib = order.indexOf(b[0]);
-    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib) || a[0].localeCompare(b[0]);
-  });
-  box.innerHTML = entries.length
-    ? '<span class="type-label">来源类型小计</span>' + entries.map(([type, g]) =>
-        '<span class="type-chip"><b>' + esc(type) + '</b>' + fmtMoney(g.total) + ' 万元<em>' + g.count + ' 笔</em></span>'
-      ).join('')
-    : '';
-}
+
 
 /* 导入 / 导出（模板、完整台账） */
 function downloadBlob(blob, filename) {
@@ -251,7 +231,7 @@ function readSources() {
     const supplier = tr.querySelector('.c-supplier').value.trim();
     const note = tr.querySelector('.c-note').value.trim();
     return {
-      source_type: tr.querySelector('.c-type').value.trim() || '进度款',
+      source_type: tr.dataset.sourceType || '合同',
       subject: tr.querySelector('.c-subject').value.trim(),
       amount: parseFloat(tr.querySelector('.c-amount').value) || 0,
       source_id: tr.querySelector('.c-id').value.trim(),
@@ -278,6 +258,105 @@ async function runMonitor() {
   setBusy('monitor-btn', false);
   if (!ok) { document.getElementById('monitor-result').innerHTML = '<div class="empty">错误：' + esc(errText(d)) + '</div>'; return; }
   renderMonitor(d);
+}
+
+
+/* ===== 合同导入（成本来源自动填行）+ 合同查看/要点分析 ===== */
+let CONTRACTS = {};
+
+async function importContractFile(ev) {
+  const input = ev && ev.target;
+  const file = input && input.files ? input.files[0] : null;
+  if (!file) return;
+  input.value = '';
+  const box = document.getElementById('source-import-result');
+  box.innerHTML = '<div class="empty">正在识别合同（' + esc(file.name) + '）…</div>';
+  try {
+    const buf = await file.arrayBuffer();
+    const resp = await fetch('/api/contracts/import?filename=' + encodeURIComponent(file.name), {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/octet-stream' }, body: buf
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.detail || ('HTTP ' + resp.status));
+    const f = d.fields || {};
+    CONTRACTS[d.contract_id] = d;
+    const tr = addSourceRow(f.subject || '', f.amount_wan || '', f.number || '', f.date || '',
+      f.supplier || '', f.name || file.name, d.contract_id);
+    tr.dataset.sourceType = '合同';
+    box.innerHTML = '<div class="ok-box">✓ 已识别合同 <b>' + esc(f.name || file.name) + '</b>（' + esc(d.format || '') + '）：金额 ' +
+      fmtMoney(f.amount_wan || 0) + ' 万元 · 日期 ' + esc(f.date || '—') + ' · 供应商 ' + esc(f.supplier || '—') +
+      '，已自动填入成本来源。<a href="#" onclick="openContract(\'' + d.contract_id + '\');return false">查看合同与分析</a></div>';
+    openContract(d.contract_id);
+  } catch (e) {
+    box.innerHTML = '<div class="err-box">导入失败：' + esc(String(e.message || e)) + '</div>';
+  }
+}
+
+function contractFieldsHtml(f) {
+  const rows = [
+    ['合同名称', f.name || '—'], ['合同编号', f.number || '—'],
+    ['合同金额', (f.amount_wan != null ? fmtMoney(f.amount_wan) + ' 万元' : '—')],
+    ['签订日期', f.date || '—'], ['供应商 / 乙方', f.supplier || '—'],
+    ['甲方 / 采购人', f.party_a || '—'], ['建议科目', f.subject || '—']
+  ];
+  return '<table class="result contract-fields"><colgroup><col style="width:26%"><col style="width:74%"></colgroup><tbody>' +
+    rows.map(r => '<tr><td class="k">' + esc(r[0]) + '</td><td>' + esc(r[1]) + '</td></tr>').join('') + '</tbody></table>';
+}
+
+async function openContract(contractId) {
+  if (!contractId) return;
+  const modal = document.getElementById('contract-modal');
+  const body = document.getElementById('contract-body');
+  const title = document.getElementById('contract-title');
+  modal.hidden = false;
+  body.innerHTML = '<div class="empty">加载合同信息…</div>';
+  let meta = CONTRACTS[contractId];
+  if (!meta) {
+    try {
+      const resp = await fetch('/api/contracts/' + encodeURIComponent(contractId), { cache: 'no-store' });
+      meta = await resp.json();
+      if (!resp.ok) throw new Error(meta.detail || ('HTTP ' + resp.status));
+      CONTRACTS[contractId] = meta;
+    } catch (e) {
+      body.innerHTML = '<div class="err-box">合同信息加载失败：' + esc(String(e.message || e)) + '</div>';
+      return;
+    }
+  }
+  const f = meta.fields || {};
+  title.textContent = f.name || meta.filename || '合同详情';
+  const fileUrl = '/api/contracts/' + encodeURIComponent(contractId) + '/download';
+  body.innerHTML =
+    '<div class="contract-actions"><a class="btn-mini" href="' + fileUrl + '" target="_blank" rel="noopener">打开 / 下载合同原件</a>' +
+    '<span class="muted">' + esc(meta.filename || '') + ' · ' + esc(meta.format || '') + '</span></div>' +
+    contractFieldsHtml(f) +
+    '<div class="contract-analysis"><div class="card-head"><b>合同要点分析</b><span class="muted" id="contract-analysis-status">自动分析中…</span></div>' +
+    '<div id="contract-analysis-body" class="muted">正在依据合同原文分析（约 5–10 秒）…</div></div>' +
+    (meta.excerpt ? '<details class="contract-excerpt"><summary>查看原文片段</summary><div class="txt">' + esc(meta.excerpt) + '</div></details>' : '');
+  analyzeContract(contractId);
+}
+
+async function analyzeContract(contractId) {
+  const st = document.getElementById('contract-analysis-status');
+  const box = document.getElementById('contract-analysis-body');
+  if (!box) return;
+  try {
+    const resp = await fetch('/api/contracts/' + encodeURIComponent(contractId) + '/analyze', { method: 'POST', cache: 'no-store' });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.detail || ('HTTP ' + resp.status));
+    if (st) st.textContent = d.cached ? '已缓存' : '分析完成';
+    box.className = '';
+    box.innerHTML = renderAnswer(d.analysis || '');
+  } catch (e) {
+    if (st) st.textContent = '分析失败';
+    box.className = 'err-box';
+    box.textContent = String(e.message || e);
+  }
+}
+
+function closeContract() {
+  const modal = document.getElementById('contract-modal');
+  if (modal) modal.hidden = true;
 }
 
 function renderMonitor(d) {
@@ -1106,6 +1185,13 @@ document.addEventListener('DOMContentLoaded', () => {
   ['budget-tbody', 'source-tbody'].forEach(id => {
     const body = document.getElementById(id);
     if (body) body.addEventListener('input', calcTotals);
+  });
+  const srcBody = document.getElementById('source-tbody');
+  if (srcBody) srcBody.addEventListener('click', e => {
+    const tr = e.target.closest('tr');
+    if (!tr || !tr.dataset.contractId) return;
+    if (['INPUT', 'BUTTON', 'A', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+    openContract(tr.dataset.contractId);
   });
   loadEvalSample();
   renderMetrics();

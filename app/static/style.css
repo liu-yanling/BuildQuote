@@ -280,3 +280,19 @@ table.result tr:last-child td{border-bottom:none}
 .web-hit .cite-line{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .web-hit a{color:var(--primary)}
 .web-hit .badge{font-weight:400}
+
+/* 合同导入弹窗与合同详情 */
+[hidden]{display:none !important}
+.modal-overlay{position:fixed;inset:0;background:rgba(15,23,42,.45);display:flex;align-items:center;justify-content:center;z-index:50;padding:24px}
+.modal{background:#fff;border-radius:14px;box-shadow:0 20px 60px rgba(15,23,42,.25);width:min(820px,94vw);max-height:88vh;display:flex;flex-direction:column;overflow:hidden}
+.modal-head{display:flex;align-items:center;justify-content:space-between;padding:14px 18px;border-bottom:1px solid var(--line)}
+.modal-body{padding:16px 18px;overflow:auto}
+.contract-actions{display:flex;align-items:center;gap:10px;margin-bottom:10px;flex-wrap:wrap}
+.contract-fields{margin-bottom:12px}
+.contract-fields td.k{color:var(--muted)}
+.contract-analysis{border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin:8px 0;background:#f8fafc}
+.contract-analysis .txt{margin-top:6px;line-height:1.75;font-size:13px;color:#0f172a}
+.contract-excerpt{margin-top:10px;font-size:12.5px;color:#475569}
+.contract-excerpt summary{cursor:pointer;color:var(--muted)}
+.contract-excerpt .txt{margin-top:6px;background:#f8fafc;border-radius:8px;padding:10px;line-height:1.6;white-space:pre-wrap}
+.row-ops{display:flex;gap:4px;flex-wrap:wrap}

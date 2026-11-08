@@ -16,9 +16,9 @@ from fastapi.responses import FileResponse, HTMLResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from app import (cost_io, cost_rules, cost_tools, eval as eval_mod, export as export_mod,
-                 permissions, prompts, quote_import, rules, scheduler, team as team_mod,
-                 tools, websearch, workflow)
+from app import (contract_import, cost_io, cost_rules, cost_tools, eval as eval_mod,
+                 export as export_mod, permissions, prompts, quote_import, rules, scheduler,
+                 team as team_mod, tools, websearch, workflow)
 from app.agent_loop import Harness
 from app.config import load_settings
 from app.embeddings import make_embedder
@@ -632,6 +632,57 @@ def qa_ask(payload: QaAskIn) -> dict:
 
     model = ModelClient(settings)
     return ask(payload.question, rag, model, top_k=payload.top_k)
+
+
+# ---- 合同导入：成本来源自动填行 + 合同查看/分析（v0.10.0） ----
+@app.post("/api/contracts/import")
+async def contract_import_upload(request: Request, filename: str = "") -> dict:
+    """导入合同（PDF / Word / Excel）：解析名称/编号/金额/日期/双方/科目，文件存档供查看。"""
+    data = await request.body()
+    if not data:
+        raise HTTPException(status_code=400, detail="空文件")
+    if len(data) > 20 * 1024 * 1024:
+        raise HTTPException(status_code=400, detail="文件过大（上限 20MB）")
+    try:
+        meta = contract_import.save_contract(data, filename)
+    except Exception as exc:  # noqa: BLE001 —— 解析失败统一 400
+        raise HTTPException(status_code=400, detail=f"无法识别合同：{exc}")
+    return {"ok": True, **meta}
+
+
+@app.get("/api/contracts/{contract_id}")
+def contract_meta(contract_id: str) -> dict:
+    meta = contract_import.load_contract(contract_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="合同不存在")
+    return {"ok": True, "contract_id": contract_id, "filename": meta.get("filename", ""),
+            "format": meta.get("format", ""), "fields": meta.get("fields", {}),
+            "excerpt": meta.get("excerpt", ""), "analysis": meta.get("analysis", ""),
+            "created_at": meta.get("created_at", "")}
+
+
+@app.get("/api/contracts/{contract_id}/download")
+def contract_download(contract_id: str):
+    path = contract_import.contract_file(contract_id)
+    meta = contract_import.load_contract(contract_id)
+    if not path or not meta:
+        raise HTTPException(status_code=404, detail="合同文件不存在")
+    media = {"PDF": "application/pdf",
+             "Word": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+             "Excel": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}.get(meta.get("format", ""), "application/octet-stream")
+    return FileResponse(str(path), media_type=media, filename=meta.get("filename") or path.name)
+
+
+@app.post("/api/contracts/{contract_id}/analyze")
+def contract_analyze(contract_id: str) -> dict:
+    """依据合同原文生成「合同要点」分析（DeepSeek；已分析过直接返回缓存）。"""
+    meta = contract_import.load_contract(contract_id)
+    if not meta:
+        raise HTTPException(status_code=404, detail="合同不存在")
+    result = contract_import.analyze(meta, ModelClient(settings))
+    if not result.get("ok"):
+        raise HTTPException(status_code=400, detail=result.get("reason", "合同分析失败"))
+    return {"ok": True, "analysis": result.get("analysis", ""), "cached": bool(result.get("cached"))}
 
 
 class WebSearchIn(BaseModel):
