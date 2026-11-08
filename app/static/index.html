@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BuildQuote · 成本监控工作台</title>
-<link rel="stylesheet" href="/static/style.css?v=0.5.3">
+<link rel="stylesheet" href="/static/style.css?v=0.6.0">
 </head>
 <body>
 <div class="layout">
@@ -23,7 +23,7 @@
 
     <div class="sidebar-foot">
       <div id="health" class="health"><span class="dot"></span>连接中…</div>
-      <div class="ver">v0.5.3 · 单进程单体</div>
+      <div class="ver">v0.6.0 · 单进程单体</div>
     </div>
   </aside>
 
@@ -122,21 +122,31 @@
       <div class="page-head">
         <div>
           <h1>询价比价 · 五步闭环</h1>
-          <p class="sub">建需求 → 收报价 → 核口径 → 做比价 → 出报告（数字一律走规则引擎，不经模型）</p>
+          <p class="sub">按 ①→⑤ 顺序操作：建需求 → 收报价 → 核口径 → 做比价 → 出报告（数字一律走规则引擎，不经模型）</p>
         </div>
         <button class="btn ghost" onclick="resetInquiry()">清空重来</button>
       </div>
 
-      <div class="stepper" id="inq-stepper">
-        <div class="step done" data-step="1"><span class="s-num">1</span><span class="s-label">建需求</span></div>
-        <div class="step" data-step="2"><span class="s-num">2</span><span class="s-label">收报价</span></div>
-        <div class="step" data-step="3"><span class="s-num">3</span><span class="s-label">核口径</span></div>
-        <div class="step" data-step="4"><span class="s-num">4</span><span class="s-label">做比价</span></div>
-        <div class="step" data-step="5"><span class="s-num">5</span><span class="s-label">出报告</span></div>
+      <div class="demo-bar">
+        <div class="demo-info">
+          <b>演示模式</b>
+          <span>先点「加载演示数据」：自动填好 3 家供应商 + 3 份报价；然后从第 1 步开始按顺序点击，每步都会出结果。</span>
+        </div>
+        <button id="demo-load-btn" class="btn primary" onclick="loadDemoData()">加载演示数据</button>
       </div>
 
+      <div class="stepper" id="inq-stepper">
+        <div class="step done" data-step="1"><span class="s-num">1</span><span class="s-label">建需求<small>填单号 + 3 家供应商</small></span></div>
+        <div class="step" data-step="2"><span class="s-num">2</span><span class="s-label">收报价<small>保存 3 份报价</small></span></div>
+        <div class="step" data-step="3"><span class="s-num">3</span><span class="s-label">核口径<small>单位 / 税率 / 运费</small></span></div>
+        <div class="step" data-step="4"><span class="s-num">4</span><span class="s-label">做比价<small>规则引擎排名</small></span></div>
+        <div class="step" data-step="5"><span class="s-num">5</span><span class="s-label">出报告<small>审核后导出 PDF/Word</small></span></div>
+      </div>
+
+      <div class="next-hint" id="inq-next-hint">下一步：点「加载演示数据」，或手动填写询价单号与 3 家供应商。</div>
+
       <!-- ① 建需求 -->
-      <div class="card">
+      <div class="card" id="inq-card-1">
         <div class="card-head"><b>① 建需求</b><span class="muted">一次询价至少 3 家供应商</span></div>
         <div class="inq-form">
           <label class="fld">询价单号 <input id="inq-id" type="text" placeholder="如 IQ-2026-001" value="IQ-2026-001"></label>
@@ -156,7 +166,7 @@
       </div>
 
       <!-- ② 收报价 -->
-      <div class="card">
+      <div class="card" id="inq-card-2">
         <div class="card-head"><b>② 收报价</b><button class="btn-mini" onclick="addQuoteRow()">+ 加报价行</button></div>
         <table class="editable quote-table">
           <thead><tr>
@@ -169,7 +179,7 @@
         <p class="hint">单位填 kg / 吨 / 米 / 根 / m³；税率填小数（13% 填 0.13）；运费为单笔含税金额。</p>
         <div class="row-actions">
           <button id="save-quotes-btn" class="btn primary" onclick="saveQuotes()">保存报价（内部代录）</button>
-          <button class="btn ghost" onclick="loadQuoteSample()">加载样例报价</button>
+          <span class="muted">报价行已由「加载演示数据」自动填入 3 份（可手动修改）</span>
         </div>
         <div id="quote-save-result" class="result-box"></div>
 
@@ -192,16 +202,16 @@
       </div>
 
       <!-- ③ 核口径 -->
-      <div class="card">
-        <div class="card-head"><b>③ 核口径</b><span class="muted" id="confirm-status">单位 / 税率 / 运费口径一致性自动检查</span></div>
+      <div class="card" id="inq-card-3">
+        <div class="card-head"><b>③ 核口径</b><span class="muted" id="confirm-status">保存报价后自动检查（无需点击）</span></div>
         <div id="confirm-preview" class="empty">保存报价后，这里预览待确认字段与口径一致性。</div>
       </div>
 
       <!-- ④ 做比价 -->
-      <div class="card">
+      <div class="card" id="inq-card-4">
         <div class="card-head"><b>④ 做比价</b><span class="muted">少于 3 家 / 3 份不进入比价；数字走规则引擎</span></div>
         <div class="inq-form">
-          <label class="fld">参考价检索 <input id="ref-input" type="text" placeholder="如：螺纹钢 HRB400" onkeydown="if(event.key==='Enter')searchRef()"></label>
+          <label class="fld">参考价检索（可选）<input id="ref-input" type="text" placeholder="如：螺纹钢 HRB400" onkeydown="if(event.key==='Enter')searchRef()"></label>
           <button class="btn ghost" onclick="searchRef()">查参考价</button>
         </div>
         <div id="ref-result" class="result-box"></div>
@@ -212,7 +222,7 @@
       </div>
 
       <!-- ⑤ 出报告 -->
-      <div class="card">
+      <div class="card" id="inq-card-5">
         <div class="card-head"><b>⑤ 出报告</b><span class="muted">报告须经成本经理审核通过后方可导出</span></div>
         <div class="inq-form">
           <label class="fld">报告编号 <input id="report-id" type="text" placeholder="自动生成" value="RPT-2026-001"></label>
@@ -284,6 +294,6 @@
   </main>
 </div>
 
-<script src="/static/app.js?v=0.5.3"></script>
+<script src="/static/app.js?v=0.6.0"></script>
 </body>
 </html>

@@ -402,12 +402,27 @@ async function search() {
 /* ===== ③ 询价比价五步 ===== */
 const INQUIRY = { inquiry_id: '', suppliers: [], quotes: [], comparison: null, init_done: false };
 
+const STEP_HINTS = {
+  1: '点「加载演示数据」自动填好 3 家供应商 + 3 份报价，然后点「初始化询价单」。',
+  2: '核对报价行后，点「保存报价（内部代录）」把 3 份报价存进系统。',
+  3: '核口径已自动检查（看上方结果）→ 下一步点「运行规则引擎比价」生成排名。',
+  4: '点「运行规则引擎比价」，由规则引擎算出排名与含税总价。',
+  5: '填报告编号 → 点「提交审核（通过）」→ 点「导出报告」下载 PDF / Word。'
+};
 function updateStepper(step) {
   document.querySelectorAll('#inq-stepper .step').forEach(el => {
     const n = parseInt(el.dataset.step, 10);
     el.classList.toggle('done', n < step);
     el.classList.toggle('active', n === step);
   });
+  const hint = document.getElementById('inq-next-hint');
+  if (hint) hint.innerHTML = '<b>当前第 ' + step + ' 步</b> · ' + esc(STEP_HINTS[step] || '');
+}
+/* 完成一步后：更新步骤条 + 自动滚到下一张卡片，演示更顺 */
+function focusStep(step) {
+  updateStepper(step);
+  const card = document.getElementById('inq-card-' + Math.min(step, 5));
+  if (card) card.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 function addSupplier(name) {
@@ -424,7 +439,6 @@ function renderSuppliers() {
   el.innerHTML = INQUIRY.suppliers.map((s, i) =>
     '<span class="chip">' + esc(s) + '<button class="chip-x" onclick="INQUIRY.suppliers.splice(' + i + ',1);renderSuppliers()">×</button></span>'
   ).join('') || '<span class="muted">尚未添加供应商</span>';
-  updateStepper(INQUIRY.suppliers.length >= 3 ? 2 : 1);
 }
 
 async function initInquiry() {
@@ -444,7 +458,7 @@ async function initInquiry() {
   const steps = (d.steps || []).map(s => '<span class="chip">' + esc(s.subject) + ' · ' + esc(s.status) + '</span>').join('');
   document.getElementById('inq-init-result').innerHTML =
     '<div class="ok-box">✓ 询价单 <b>' + esc(id) + '</b> 已初始化，五步任务已创建：<div class="chip-row">' + steps + '</div></div>';
-  updateStepper(2);
+  focusStep(2);
 }
 
 /* 报价行 */
@@ -474,20 +488,32 @@ function readQuoteRows() {
     freight: parseFloat(tr.querySelector('.q-freight').value) || 0
   })).filter(r => r.supplier);
 }
-function loadQuoteSample() {
+/* 演示数据：第 1 步就把单号 / 供应商 / 3 份报价全部备好，之后按 ①→⑤ 逐个点 */
+function loadDemoData() {
+  resetInquiry();
+  document.getElementById('inq-id').value = 'IQ-2026-001';
+  document.getElementById('inq-deadline').value = '2026-11-20';
+  INQUIRY.suppliers = ['四川钢材商贸', '成都建材供应', '成都金属材料'];
+  renderSuppliers();
   document.getElementById('quote-tbody').innerHTML = '';
   addQuoteRow('四川钢材商贸', '螺纹钢', 'HRB400 Φ20', '吨', 3580, 100, 0.13, 200);
   addQuoteRow('成都建材供应', '螺纹钢', 'HRB400 Φ20', '吨', 3620, 100, 0.13, 150);
   addQuoteRow('成都金属材料', '螺纹钢', 'HRB400 Φ20', '吨', 3560, 100, 0.13, 260);
-  if (!INQUIRY.suppliers.length) {
-    INQUIRY.suppliers = ['四川钢材商贸', '成都建材供应', '成都金属材料'];
-    renderSuppliers();
-  }
+  INQUIRY.quotes = readQuoteRows();
+  renderConfirm();
+  const btn = document.getElementById('demo-load-btn');
+  if (btn) btn.textContent = '重新加载演示数据';
+  document.getElementById('inq-init-result').innerHTML =
+    '<div class="ok-box">✓ 演示数据已就绪：3 家供应商 / 3 份报价（含税单价 3580 / 3620 / 3560，运费 200 / 150 / 260）。' +
+    '请从第 1 步开始，点「初始化询价单」。</div>';
+  updateStepper(1);
+  document.getElementById('inq-card-1').scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
+function loadQuoteSample() { loadDemoData(); }
 async function saveQuotes() {
   const rows = readQuoteRows();
   if (!INQUIRY.inquiry_id) INQUIRY.inquiry_id = document.getElementById('inq-id').value.trim() || 'IQ-2026-001';
-  if (!rows.length) { document.getElementById('quote-save-result').innerHTML = '<div class="empty">请先添加报价行（或点「加载样例报价」）。</div>'; return; }
+  if (!rows.length) { document.getElementById('quote-save-result').innerHTML = '<div class="empty">请先点「加载演示数据」自动填入报价行，或手动加一行。</div>'; return; }
   setBusy('save-quotes-btn', true, '保存中…');
   let okAll = true, msgs = [];
   for (const q of rows) {
@@ -500,7 +526,7 @@ async function saveQuotes() {
     ? '<div class="ok-box">已内部代录 ' + rows.length + ' 份报价（状态：待确认）。<div class="chip-row">' + msgs.map(esc).join('') + '</div></div>'
     : '<div class="err-box">' + msgs.map(esc).join('<br>') + '</div>';
   renderConfirm();
-  updateStepper(3);
+  focusStep(3);
 }
 async function parseQuote() {
   const text = document.getElementById('parse-text').value.trim();
@@ -566,12 +592,13 @@ async function computeComparison() {
   INQUIRY.quotes = quotes;
   if (quotes.length < 3) { document.getElementById('compute-result').innerHTML = '<div class="empty">报价不足 3 份，不进入比价。请先保存 ≥3 份报价。</div>'; return; }
   setBusy('compute-btn', true, '规则计算中…');
+  updateStepper(4);
   const { ok, d } = await postJSON('/api/quotes/compute', { inquiry_id: INQUIRY.inquiry_id || 'IQ-2026-001', items: quotes });
   setBusy('compute-btn', false);
   if (!ok) { document.getElementById('compute-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + '</div>'; return; }
   INQUIRY.comparison = d;
   renderComparison(d);
-  updateStepper(4);
+  focusStep(5);
 }
 
 function renderComparison(d) {
@@ -618,7 +645,12 @@ async function approveReport(action) {
     (d.status === '审核通过'
       ? '。已固化报告快照 <code>' + esc(d.snapshot_id || '—') + '</code>，现在可导出 PDF / Word。'
       : '（打回后需重新提交审核）') + '</div>';
-  updateStepper(5);
+  const hint = document.getElementById('inq-next-hint');
+  if (hint) {
+    hint.innerHTML = d.status === '审核通过'
+      ? '<b>当前第 5 步</b> · 已审核通过（快照 ' + esc(d.snapshot_id || '—') + '）→ 点「导出报告」下载 PDF / Word。'
+      : '<b>当前第 5 步</b> · 报告被打回，请修改后重新提交审核。';
+  } else { focusStep(5); }
 }
 async function exportReport() {
   const reportId = document.getElementById('report-id').value.trim() || INQUIRY.report_id;
@@ -637,6 +669,8 @@ async function exportReport() {
     '<a class="btn-mini" href="' + esc(d.download_url) + '" download style="margin-top:8px;display:inline-block">⬇ 下载 ' + label + '</a> ' +
     '<a class="btn-mini" href="' + esc(d.download_url) + '" target="_blank" style="display:inline-block">在新标签打开</a><br>' +
     '<span class="muted">' + esc(d.note || '') + '</span></div>';
+  const hint = document.getElementById('inq-next-hint');
+  if (hint) hint.innerHTML = '<b>演示完成</b> · 已导出报告，可点上方链接下载；想再演示一遍点「清空重来」。';
 }
 function resetInquiry() {
   Object.assign(INQUIRY, { inquiry_id: '', suppliers: [], quotes: [], comparison: null, init_done: false });
@@ -644,7 +678,9 @@ function resetInquiry() {
   document.getElementById('quote-tbody').innerHTML = '';
   ['inq-init-result', 'quote-save-result', 'parse-result', 'ref-result', 'compute-result', 'report-result'].forEach(id => document.getElementById(id).innerHTML = '');
   document.getElementById('confirm-preview').innerHTML = '<div class="empty">保存报价后，这里预览待确认字段与口径一致性。</div>';
-  document.getElementById('confirm-status').textContent = '单位 / 税率 / 运费口径一致性自动检查';
+  document.getElementById('confirm-status').textContent = '保存报价后自动检查（无需点击）';
+  const btn = document.getElementById('demo-load-btn');
+  if (btn) btn.textContent = '加载演示数据';
   updateStepper(1);
 }
 
