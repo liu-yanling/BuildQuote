@@ -2,10 +2,12 @@
 
 流程：问题 → 混合召回（向量 + BM25）→ 拼证据 → 模型只依据证据作答并标注来源。
 无证据时明说「未检索到相关条款」，不编造。
+回答用自然语言（像同事当面解释），不使用 Markdown 标记；前端按段落渲染。
 """
 from __future__ import annotations
 
 import argparse
+import re
 from typing import Any
 
 from app.rag import RagEngine, format_evidence
@@ -13,11 +15,51 @@ from app.rag import RagEngine, format_evidence
 QA_SYSTEM = (
     "你是江山云墅项目的成本合同问答助手。\n"
     "规则：\n"
-    "1. 只能依据用户提供的【合同条款原文】作答，不得使用外部知识、不得编造。\n"
-    "2. 每个结论必须标注来源编号，如 [1][2]，并在结尾列出引用的合同编号。\n"
-    "3. 原文没有的信息，明确说「合同原文未提及」。\n"
-    "4. 用中文回答，简洁、分点。"
+    "1. 只能依据用户提供的【合同条款原文】作答，不得使用外部知识、不得编造；"
+    "原文没有的信息，明确说「合同原文未提及」。\n"
+    "2. 用自然语言回答：像同事当面解释一样写 2–4 段连贯的话，先给结论，再补充依据和例外。\n"
+    "3. 不要使用任何 Markdown 标记（不要 #、**、-、1.、---、代码块），不要分点罗列。\n"
+    "4. 引用依据时用合同编号与条款名自然带出，例如「按《JA-2025-010-04》第八条，……」；"
+    "不要用 [1][2] 这类编号。\n"
+    "5. 不要在结尾另附「引用合同编号」清单，系统会自动展示引用来源。\n"
+    "6. 用简体中文，语气平实，总长度控制在 500 字以内。"
 )
+
+# 模型偶尔仍会输出 Markdown 标记：这里做一层兜底清洗，保证界面是自然语言。
+_MD_HEAD = re.compile(r"^\s*#{1,6}\s*")
+_MD_HR = re.compile(r"^\s*([-*_]\s*){3,}$")
+_MD_BULLET = re.compile(r"^\s*[-*+•]\s+")
+_MD_ORDER = re.compile(r"^\s*\d+[.)、]\s*")
+_MD_BOLD = re.compile(r"\*\*(.+?)\*\*")
+_MD_ITALIC = re.compile(r"(?<!\*)\*([^*\n]+?)\*(?!\*)")
+_MD_CODE = re.compile(r"`([^`\n]+)`")
+_MD_QUOTE = re.compile(r"^\s*>\s*")
+_MD_REF = re.compile(r"\s*\[\d+\]")   # 模型偶发的 [1][2] 编号引用 → 去掉（来源由界面引用标签展示）
+
+
+def naturalize_answer(text: str) -> str:
+    """把回答里的 Markdown 标记洗掉，保留段落结构（自然语言展示用）。"""
+    lines: list[str] = []
+    for raw in (text or "").splitlines():
+        line = raw.rstrip()
+        if not line.strip():
+            lines.append("")
+            continue
+        if _MD_HR.match(line):
+            lines.append("")
+            continue
+        line = _MD_QUOTE.sub("", line)
+        line = _MD_HEAD.sub("", line)
+        line = _MD_BULLET.sub("", line)
+        line = _MD_ORDER.sub("", line)
+        line = _MD_BOLD.sub(r"\1", line)
+        line = _MD_ITALIC.sub(r"\1", line)
+        line = _MD_CODE.sub(r"\1", line)
+        line = _MD_REF.sub("", line)
+        lines.append(line.strip())
+    out = "\n".join(lines)
+    out = re.sub(r"\n{3,}", "\n\n", out)
+    return out.strip()
 
 
 def build_context(evidence: list[dict[str, Any]]) -> str:
@@ -37,11 +79,12 @@ def ask(question: str, rag: RagEngine, model, top_k: int = 5, max_tokens: int = 
 
     user = (f"用户问题：{question}\n\n"
             f"以下是检索到的合同条款原文：\n\n{build_context(evidence)}\n\n"
-            f"请依据以上原文回答，并标注来源编号。")
+            f"请依据以上原文，用自然语言回答（不要 Markdown、不要分点、不要 [1] 编号），"
+            f"引用依据时带上合同编号与条款名。")
     try:
         resp = model.complete(QA_SYSTEM, [{"role": "user", "content": user}],
                               tools=[], max_tokens=max_tokens)
-        answer = resp["text"]
+        answer = naturalize_answer(resp["text"])
     except Exception as exc:  # noqa: BLE001 —— 模型失败时返回证据供人工查阅
         answer = f"（模型调用失败：{exc}）以下是检索到的合同原文，供人工查阅。"
 

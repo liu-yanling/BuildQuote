@@ -142,11 +142,42 @@ function renderMonitor(d) {
 }
 
 /* ===== ② 合同问答 ===== */
+/* 回答用自然语言展示：按段落渲染，仅保留少量行内强调；
+   若模型仍漏出 Markdown 标记，这里再兜底洗一遍（标题/列表/分割线符号）。 */
+function renderAnswer(text) {
+  const clean = String(text == null ? '' : text)
+    .split('\n')
+    .map(line => {
+      let l = line.replace(/\u200b/g, '');
+      if (/^\s*([-*_]\s*){3,}$/.test(l)) return '';
+      l = l.replace(/^\s*>\s*/, '');
+      l = l.replace(/^\s*#{1,6}\s*/, '');
+      l = l.replace(/^\s*[-*+•]\s+/, '');
+      l = l.replace(/^\s*\d+[.)、]\s*/, '');
+      return l.trimEnd();
+    })
+    .join('\n');
+  const paras = clean.split(/\n{2,}/).map(block => {
+    const lines = block.split('\n').map(s => s.trim()).filter(Boolean);
+    if (!lines.length) return '';
+    const inline = s => esc(s)
+      .replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>')
+      .replace(/`([^`\n]+)`/g, '<code>$1</code>');
+    return '<p>' + lines.map(inline).join('<br>') + '</p>';
+  }).filter(Boolean);
+  return paras.join('') || '<p>（空回答）</p>';
+}
+
 function addMsg(role, text, citations) {
   const chat = document.getElementById('chat');
   const div = document.createElement('div');
   div.className = 'msg ' + role;
-  div.textContent = text;
+  if (role === 'assistant') {
+    div.classList.add('answer');
+    div.innerHTML = renderAnswer(text);
+  } else {
+    div.textContent = text;
+  }
   if (citations && citations.length) {
     const cite = document.createElement('div');
     cite.className = 'cite';
