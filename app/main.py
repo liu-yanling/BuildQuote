@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import json
 import logging
 import time
 from pathlib import Path
@@ -482,6 +483,80 @@ class EvalIn(BaseModel):
 @app.post("/api/eval/run")
 def eval_run(payload: EvalIn) -> dict:
     return eval_mod.run_eval(payload.samples)
+
+
+# ---- 评测看板：指标持久化 + 扩展金标准批量检索评测（v0.5.3） ----
+_ROOT = Path(__file__).resolve().parent.parent
+_EVAL_LAST = settings.db_path.parent / "eval_last.json"
+_GOLD_LARGE = _ROOT / "evals" / "qa_gold_large.json"
+
+
+def _read_eval_last() -> dict:
+    try:
+        return json.loads(_EVAL_LAST.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return {}
+
+
+def _write_eval_last(key: str, data: dict) -> dict:
+    record = _read_eval_last()
+    record[key] = {**data, "at": _now()}
+    _EVAL_LAST.parent.mkdir(parents=True, exist_ok=True)
+    _EVAL_LAST.write_text(json.dumps(record, ensure_ascii=False, indent=1), encoding="utf-8")
+    return record
+
+
+@app.get("/api/eval/last")
+def eval_last() -> dict:
+    """返回上次评测结果（页面刷新后指标卡仍有数据）。"""
+    return {"ok": True, "results": _read_eval_last()}
+
+
+class EvalRecordIn(BaseModel):
+    key: str
+    data: dict[str, Any] = {}
+
+
+@app.post("/api/eval/record")
+def eval_record(payload: EvalRecordIn) -> dict:
+    """前端跑完问答/样例评测后，把指标持久化到 data/eval_last.json。"""
+    if payload.key not in {"retrieval", "qa", "alertCoverage", "alertPrecision", "citation"}:
+        raise HTTPException(status_code=400, detail="未知评测指标")
+    record = _write_eval_last(payload.key, payload.data)
+    return {"ok": True, "results": record}
+
+
+class EvalRetrievalIn(BaseModel):
+    top_k: int = 5
+
+
+def _hit_contract(hits: list[dict], contract: str) -> bool:
+    for h in hits:
+        hay = (h.get("source_id", "")
+               + ((h.get("meta") or {}).get("span", ""))
+               + (h.get("text") or ""))
+        if contract in hay:
+            return True
+    return False
+
+
+@app.post("/api/eval/retrieval")
+def eval_retrieval(payload: EvalRetrievalIn) -> dict:
+    """批量检索评测：用扩展金标准集跑 top-k 召回，返回命中率并持久化。"""
+    try:
+        gold = json.loads(_GOLD_LARGE.read_text(encoding="utf-8")).get("samples", [])
+    except (OSError, ValueError) as exc:
+        raise HTTPException(status_code=500, detail=f"金标准集读取失败：{exc}")
+    if not gold:
+        raise HTTPException(status_code=500, detail="金标准集为空")
+    hit = 0
+    for item in gold:
+        hits = rag.retrieve(item["question"], top_k=payload.top_k)
+        if _hit_contract(hits, item["contract"]):
+            hit += 1
+    value = round(hit / len(gold), 4)
+    record = _write_eval_last("retrieval", {"value": value, "hit": hit, "total": len(gold)})
+    return {"ok": True, "value": value, "hit": hit, "total": len(gold), "results": record}
 
 
 class QaAskIn(BaseModel):

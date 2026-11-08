@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BuildQuote · 成本监控工作台</title>
-<link rel="stylesheet" href="/static/style.css?v=0.5.2">
+<link rel="stylesheet" href="/static/style.css?v=0.5.3">
 </head>
 <body>
 <div class="layout">
@@ -23,7 +23,7 @@
 
     <div class="sidebar-foot">
       <div id="health" class="health"><span class="dot"></span>连接中…</div>
-      <div class="ver">v0.5.2 · 单进程单体</div>
+      <div class="ver">v0.5.3 · 单进程单体</div>
     </div>
   </aside>
 
@@ -237,32 +237,21 @@
       <div class="page-head">
         <div>
           <h1>评测看板</h1>
-          <p class="sub">用「12 道金标准题 + 样例数据」检查系统靠不靠谱：找不找得到依据、答得准不准、预警漏没漏——指标一屏看清。</p>
+          <p class="sub">用扩展金标准集 + 样例数据检查系统靠不靠谱：找不找得到依据、答得准不准、预警漏没漏——只看几个百分比指标。</p>
         </div>
       </div>
 
       <div class="metric-cards" id="eval-metrics"></div>
 
-      <div class="card eval-why">
-        <div class="card-head"><b>这个看板有什么用？</b></div>
-        <div class="eval-why-grid">
-          <div class="why-item"><b>① 检索能不能找到依据</b><p>同事问一句合同问题，系统先从 80 份合同里找条款。命中率低，说明找错了合同，后面回答就不可信。</p></div>
-          <div class="why-item"><b>② 回答有没有出处</b><p>每条结论都要带合同编号和条款位置（如《JA-2025-010-04》第八条）。引用可追溯率低，说明有编造风险。</p></div>
-          <div class="why-item"><b>③ 预警漏没漏、误报多不多</b><p>该报警的科目有没有报出来（覆盖率），报出来的预警是不是真的（准确率）。</p></div>
-          <div class="why-item"><b>④ 金标准由谁定</b><p>12 道题和应命中合同由成本经理人工标注（初版），评测只是拿人工标准检验系统，可继续扩充。</p></div>
-        </div>
-      </div>
-
       <div class="eval-grid">
         <div class="card">
-          <div class="card-head"><b>① 金标准问答评测（12 题）</b><span class="muted">问题 → 应命中合同</span></div>
-          <p class="hint">先点「检索召回评测」：不调模型，只看每道题前 5 条检索结果里有没有正确合同；再点「问答实跑评测」：调 DeepSeek 完整作答，核对回答引用的合同是否命中。</p>
+          <div class="card-head"><b>① 金标准问答评测</b><span class="muted">只看指标结果</span></div>
+          <p class="hint">先点「检索召回评测」：不调模型，看成批问题里能从前 5 条检索结果找到正确合同的比例；再点「问答实跑评测」：调 DeepSeek 完整作答，核对回答引用的合同是否正确。</p>
           <div class="row-actions">
-            <button id="eval-retrieval-btn" class="btn primary" onclick="runRetrievalEval()">运行检索召回评测（快）</button>
+            <button id="eval-retrieval-btn" class="btn primary" onclick="runRetrievalEval()">运行检索召回评测（快，约 30 秒）</button>
             <button id="eval-qa-btn" class="btn ghost" onclick="runQaEval()">问答实跑评测（慢，约 1–3 分钟）</button>
           </div>
           <div id="eval-qa-status" class="muted" style="min-height:18px"></div>
-          <div id="qa-gold-table" class="gold-table"></div>
         </div>
 
         <div class="card">
@@ -280,11 +269,21 @@
           <div id="eval-result" class="result-box"></div>
         </div>
       </div>
+
+      <div class="card eval-why">
+        <div class="card-head"><b>关于这个看板</b></div>
+        <div class="eval-why-grid">
+          <div class="why-item"><b>① 检索能不能找到依据</b><p>同事问一句合同问题，系统先从 80 份合同里找条款。命中率低，说明找错了合同，后面回答就不可信。</p></div>
+          <div class="why-item"><b>② 回答有没有出处</b><p>每条结论都要带合同编号和条款位置（如《JA-2025-010-04》第八条）。引用可追溯率低，说明有编造风险。</p></div>
+          <div class="why-item"><b>③ 预警漏没漏、误报多不多</b><p>该报警的科目有没有报出来（覆盖率），报出来的预警是不是真的（准确率）。</p></div>
+          <div class="why-item"><b>④ 金标准由谁定</b><p>评测题目与应命中合同以成本经理人工标注为准；当前扩展集为机器生成、待人工校核，可持续扩充。</p></div>
+        </div>
+      </div>
     </section>
 
   </main>
 </div>
 
-<script src="/static/app.js?v=0.5.2"></script>
+<script src="/static/app.js?v=0.5.3"></script>
 </body>
 </html>

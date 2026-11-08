@@ -24,7 +24,7 @@ function switchView(name) {
   document.querySelectorAll('.nav-item').forEach(a => a.classList.toggle('active', a.dataset.view === name));
   document.querySelectorAll('.view').forEach(v => v.classList.toggle('active', v.id === 'view-' + name));
   if (name === 'monitor') checkHealth();
-  if (name === 'eval') renderGoldTable();
+  if (name === 'eval') renderMetrics();
 }
 
 /* ===== 健康状态 ===== */
@@ -655,6 +655,7 @@ const SAMPLE_EVALS = {
   "answers": [{ "citation": "[src1#0-10]" }, { "citation": "" }],
   "answer_accuracy": { "predicted": ["建筑工程费", "安装工程费"], "gold": ["建筑工程费", "安装工程费"] }
 };
+/* 问答实跑评测用的核心题（不在界面展示题目，只用于抽样实跑） */
 const QA_GOLD = [
   ["钢材采购合同怎么付款？", "JA-2025-010-04"],
   ["总承包合同的质量保证金怎么扣？", "JA-2025-010"],
@@ -670,17 +671,39 @@ const QA_GOLD = [
   ["边坡支护工程的付款方式？", "JA-2025-013"]
 ];
 
-/* 指标卡状态：跑完评测后写入；页面上的「一眼看懂」就靠它 */
 const EVAL_STATE = { retrieval: null, qa: null, alertCoverage: null, alertPrecision: null, citation: null };
 const METRIC_DEFS = [
-  { key: 'retrieval', label: '检索召回率', scope: '12 题金标准', desc: '问题找得到正确合同的比例（前 5 条里命中）', good: 0.9 },
-  { key: 'qa', label: '问答引用命中率', scope: '12 题实跑', desc: '回答引用的合同，确实是题目要求的那份', good: 0.9 },
+  { key: 'retrieval', label: '检索召回率', scope: '扩展金标准集', desc: '问合同问题时，前 5 条检索结果能找到正确合同的比例', good: 0.9 },
+  { key: 'qa', label: '问答引用命中率', scope: '抽样实跑', desc: '完整回答里引用的合同，确实是题目要求的那份', good: 0.9 },
   { key: 'alertCoverage', label: '预警覆盖率', scope: '样例数据', desc: '该报警的科目，系统都报出来了（不遗漏）', good: 0.8 },
   { key: 'alertPrecision', label: '预警准确率', scope: '样例数据', desc: '系统报出的预警，有多少是真的（不误报）', good: 0.8 },
   { key: 'citation', label: '引用可追溯率', scope: '样例数据', desc: '回答里带合同出处的比例（可回溯原文）', good: 0.9 }
 ];
 
 function _pct(v) { return v == null ? '—' : (Number(v) * 100).toFixed(1) + '%'; }
+function _nowLocal() {
+  const d = new Date(), p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + 'T' +
+    p(d.getHours()) + ':' + p(d.getMinutes()) + ':' + p(d.getSeconds());
+}
+function _fmtAt(iso) {
+  if (!iso) return '';
+  const m = String(iso).match(/^\d{4}-(\d{2})-(\d{2})T(\d{2}):(\d{2})/);
+  return m ? (m[1] + '-' + m[2] + ' ' + m[3] + ':' + m[4]) : String(iso).slice(0, 16);
+}
+
+/* 页面加载时读回上次评测结果，指标卡不用重新跑也有数 */
+async function loadEvalLast() {
+  try {
+    const resp = await fetch('/api/eval/last', { cache: 'no-store' });
+    const d = await resp.json();
+    const res = (d && d.results) || {};
+    Object.keys(EVAL_STATE).forEach(k => {
+      if (res[k] && res[k].value != null) EVAL_STATE[k] = { value: res[k].value, at: res[k].at };
+    });
+    renderMetrics();
+  } catch (e) { /* 离线时保持待评测 */ }
+}
 
 function renderMetrics() {
   const box = document.getElementById('eval-metrics');
@@ -694,7 +717,7 @@ function renderMetrics() {
       if (ratio >= def.good) { cls = 'good'; badge = '达标'; }
       else if (ratio >= def.good * 0.75) { cls = 'warn'; badge = '待优化'; }
       else { cls = 'bad'; badge = '不达标'; }
-      sub = st.hint || def.scope;
+      sub = st.at ? ('上次评测 ' + _fmtAt(st.at)) : '已评测';
     }
     return '<div class="metric-card ' + cls + '">' +
       '<div class="m-top"><span class="m-label">' + esc(def.label) + '</span><span class="m-badge">' + esc(badge) + '</span></div>' +
@@ -704,13 +727,21 @@ function renderMetrics() {
   }).join('');
 }
 
+function saveEval(key, data) {
+  fetch('/api/eval/record', {
+    method: 'POST', cache: 'no-store',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ key: key, data: data })
+  }).catch(() => {});
+}
+
 function evalSampleSummary() {
   const s = SAMPLE_EVALS;
   const parts = [];
-  if (s.alerts) parts.push('预警检查（应报 ' + (s.alerts.gold || []).length + ' 个科目）');
-  if (s.retrieval) parts.push('检索检查（应命中 ' + (s.retrieval.gold || []).length + ' 条）');
-  if (s.answers) parts.push('引用检查（' + (s.answers || []).length + ' 条回答）');
-  if (s.answer_accuracy) parts.push('回答准确率（' + (s.answer_accuracy.gold || []).length + ' 项）');
+  if (s.alerts) parts.push('预警检查');
+  if (s.retrieval) parts.push('检索检查');
+  if (s.answers) parts.push('引用检查');
+  if (s.answer_accuracy) parts.push('回答准确率');
   return '样例包含：' + parts.join(' · ');
 }
 
@@ -723,7 +754,7 @@ function loadEvalSample() {
   if (res) res.innerHTML = '';
 }
 
-/* 离线样例结果 → 自然语言说明（不再展示原始 JSON） */
+/* 离线样例结果 → 自然语言说明（不展示原始 JSON） */
 function renderOfflineResult(d) {
   const lines = [];
   const alerts = d['预警'];
@@ -748,18 +779,12 @@ function renderOfflineResult(d) {
     });
   }
   if (d['引用可追溯率'] != null) {
-    lines.push({
-      ok: d['引用可追溯率'] >= 0.9,
-      title: '引用检查',
-      text: '样例回答中 ' + _pct(d['引用可追溯率']) + ' 带有合同出处（引用可追溯率）。'
-    });
+    lines.push({ ok: d['引用可追溯率'] >= 0.9, title: '引用检查',
+      text: '样例回答中 ' + _pct(d['引用可追溯率']) + ' 带有合同出处（引用可追溯率）。' });
   }
   if (d['回答准确率'] != null) {
-    lines.push({
-      ok: d['回答准确率'] >= 0.8,
-      title: '回答准确率',
-      text: '按样例比对，回答准确率 ' + _pct(d['回答准确率']) + '。'
-    });
+    lines.push({ ok: d['回答准确率'] >= 0.8, title: '回答准确率',
+      text: '按样例比对，回答准确率 ' + _pct(d['回答准确率']) + '。' });
   }
   return lines.map(l => '<div class="eval-line ' + (l.ok ? 'ok' : 'warn') + '"><b>' + esc(l.title) + '</b><span>' + esc(l.text) + '</span></div>').join('');
 }
@@ -772,14 +797,20 @@ async function runEval() {
   const { ok, d } = await postJSON('/api/eval/run', { samples });
   setBusy('eval-run-btn', false);
   if (!ok) { document.getElementById('eval-result').innerHTML = '<div class="err-box">' + esc(errText(d)) + '</div>'; return; }
+  const at = _nowLocal();
   const alerts = d['预警'] || {};
   if (alerts['预警覆盖率'] != null) {
-    EVAL_STATE.alertCoverage = { value: alerts['预警覆盖率'], hint: '应报 ' + alerts['应预警数'] + ' 个 / 命中 ' + alerts['命中'] + ' 个' };
+    EVAL_STATE.alertCoverage = { value: alerts['预警覆盖率'], at: at };
+    saveEval('alertCoverage', { value: alerts['预警覆盖率'] });
   }
   if (alerts['预警准确率'] != null) {
-    EVAL_STATE.alertPrecision = { value: alerts['预警准确率'], hint: '报出 ' + alerts['系统预警数'] + ' 个 / 命中 ' + alerts['命中'] + ' 个' };
+    EVAL_STATE.alertPrecision = { value: alerts['预警准确率'], at: at };
+    saveEval('alertPrecision', { value: alerts['预警准确率'] });
   }
-  if (d['引用可追溯率'] != null) EVAL_STATE.citation = { value: d['引用可追溯率'], hint: '样例回答引用检查' };
+  if (d['引用可追溯率'] != null) {
+    EVAL_STATE.citation = { value: d['引用可追溯率'], at: at };
+    saveEval('citation', { value: d['引用可追溯率'] });
+  }
   renderMetrics();
   const html = renderOfflineResult(d);
   document.getElementById('eval-result').innerHTML = html
@@ -787,81 +818,47 @@ async function runEval() {
     : '<div class="empty" style="padding:14px">样例未包含可计算指标，请检查 JSON 结构。</div>';
 }
 
-function renderGoldTable(results) {
-  const el = document.getElementById('qa-gold-table');
-  const rows = QA_GOLD.map(([q, contract], i) => {
-    let cell = '<span class="muted">待评测</span>';
-    if (results) {
-      const r = results[i];
-      if (r && r.hit) cell = '<span class="badge normal">✓ 命中</span>';
-      else if (r && r.error) cell = '<span class="badge yellow">' + esc(r.error) + '</span>';
-      else if (r) cell = '<span class="badge red">✗ 未命中</span>';
-    }
-    return '<tr><td>' + (i + 1) + '</td><td>' + esc(q) + '</td><td class="mono">' + esc(contract) + '</td><td>' + cell + '</td></tr>';
-  }).join('');
-  el.innerHTML = '<table class="result"><thead><tr><th style="width:32px">#</th><th>问题</th><th>应命中合同</th><th style="width:110px">结果</th></tr></thead><tbody>' + rows + '</tbody></table>';
-}
-
-function hitsContainContract(hits, contract) {
-  if (!hits || !hits.length) return false;
-  return hits.some(h => {
-    const s = (h.citation || h.source_id || h.source || '') + (h.text || '');
-    return s.includes(contract);
-  });
-}
-
 async function runRetrievalEval() {
   const st = document.getElementById('eval-qa-status');
   setBusy('eval-retrieval-btn', true, '评测中…');
-  const results = [];
-  let hitCount = 0;
-  for (let i = 0; i < QA_GOLD.length; i++) {
-    const [q, contract] = QA_GOLD[i];
-    st.innerHTML = '<span class="spinner"></span>检索评测 ' + (i + 1) + '/' + QA_GOLD.length + '：' + esc(q);
-    const { ok, d } = await postJSON('/api/knowledge/search', { query: q, top_k: 5 });
-    const hit = ok && hitsContainContract(d.hits, contract);
-    if (hit) hitCount++;
-    results.push({ hit, found: contract, error: ok ? '' : errText(d) });
-    renderGoldTable(results);
+  st.innerHTML = '<span class="spinner"></span>正在批量检索评测（扩展金标准集，约 30 秒）…';
+  try {
+    const resp = await fetch('/api/eval/retrieval', {
+      method: 'POST', cache: 'no-store',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ top_k: 5 })
+    });
+    const d = await resp.json().catch(() => ({}));
+    if (!resp.ok) throw new Error(d.detail || ('HTTP ' + resp.status));
+    EVAL_STATE.retrieval = { value: d.value, at: d.results && d.results.retrieval ? d.results.retrieval.at : _nowLocal() };
+    renderMetrics();
+    st.innerHTML = '<b>检索召回率 ' + _pct(d.value) + '</b>（扩展金标准集实测，越大越好）';
+  } catch (e) {
+    st.innerHTML = '<span class="badge red">评测失败：' + esc(String(e.message || e)) + '</span>';
   }
   setBusy('eval-retrieval-btn', false);
-  st.innerHTML = '';
-  EVAL_STATE.retrieval = {
-    value: hitCount / QA_GOLD.length,
-    hint: '12 道题中 ' + hitCount + ' 道在前 5 条里命中正确合同'
-  };
-  renderMetrics();
-  document.getElementById('eval-qa-status').innerHTML =
-    '<b>检索召回率 ' + _pct(hitCount / QA_GOLD.length) + '</b>（' + hitCount + '/' + QA_GOLD.length +
-    ' 道题的前 5 条检索结果里，找到了应命中的合同）';
 }
 
 async function runQaEval() {
-  if (!confirm('将调用 DeepSeek 逐题作答（12 题，约需 1–3 分钟），是否继续？')) return;
+  if (!confirm('将调用 DeepSeek 逐题作答（约 1–3 分钟），是否继续？')) return;
   const st = document.getElementById('eval-qa-status');
   setBusy('eval-qa-btn', true, '问答评测中…');
-  const results = [];
   let hitCount = 0;
   for (let i = 0; i < QA_GOLD.length; i++) {
     const [q, contract] = QA_GOLD[i];
-    st.innerHTML = '<span class="spinner"></span>问答评测 ' + (i + 1) + '/' + QA_GOLD.length + '：' + esc(q);
+    st.innerHTML = '<span class="spinner"></span>问答实跑评测 ' + (i + 1) + '/' + QA_GOLD.length + '：' + esc(q);
     const { ok, d } = await postJSON('/api/qa/ask', { question: q, top_k: 6 });
     const citations = d.citations || [];
     const hit = ok && (citations.some(c => c.includes(contract)) || (d.answer || '').includes(contract));
     if (hit) hitCount++;
-    results.push({ hit, found: contract, error: ok ? '' : errText(d) });
-    renderGoldTable(results);
   }
   setBusy('eval-qa-btn', false);
-  st.innerHTML = '';
-  EVAL_STATE.qa = {
-    value: hitCount / QA_GOLD.length,
-    hint: '12 道题中 ' + hitCount + ' 道回答引用到了应命中合同'
-  };
+  const value = hitCount / QA_GOLD.length;
+  const at = _nowLocal();
+  EVAL_STATE.qa = { value: value, at: at };
+  saveEval('qa', { value: value, hit: hitCount, total: QA_GOLD.length });
   renderMetrics();
-  document.getElementById('eval-qa-status').innerHTML =
-    '<b>问答引用命中率 ' + _pct(hitCount / QA_GOLD.length) + '</b>（' + hitCount + '/' + QA_GOLD.length +
-    ' 道题的完整回答引用了应命中合同）';
+  st.innerHTML = '<b>问答引用命中率 ' + _pct(value) + '</b>（抽样完整问答实跑，越大越好）';
 }
 
 /* ===== 启动 ===== */
@@ -880,8 +877,8 @@ document.addEventListener('DOMContentLoaded', () => {
     if (body) body.addEventListener('input', calcTotals);
   });
   loadEvalSample();
-  renderGoldTable();
   renderMetrics();
+  loadEvalLast();
   renderSuppliers();
   updateStepper(1);
   checkHealth();
