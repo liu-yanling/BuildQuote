@@ -151,6 +151,19 @@ _BUILTIN_KB: dict[str, tuple[str, str]] = {
 }
 
 
+def _relevant(query: str, text: str) -> bool:
+    """查询与结果是否有 ≥2 字的重叠（过滤维基百科里明显跑题的结果）。"""
+    q = re.sub(r"\s+", "", query or "")
+    t = re.sub(r"\s+", "", text or "")
+    if not q or not t:
+        return False
+    for n in (4, 3, 2):
+        for i in range(0, len(q) - n + 1):
+            if q[i:i + n] in t:
+                return True
+    return False
+
+
 def builtin_results(query: str, top_k: int = 3, fallback: bool = False) -> list[dict[str, Any]]:
     """按关键词匹配内置建筑知识（来源标注“内置知识库”）；fallback=True 时无命中给两条示例。"""
     hits: list[dict[str, Any]] = []
@@ -201,10 +214,18 @@ def search(query: str, top_k: int = 5, model=None, with_answer: bool = True) -> 
 
     wiki = search_wiki(query, top_k=min(3, top_k))
     baidu = search_baidu(query, top_k=max(2, top_k - len(wiki)))
-    results = wiki + baidu
-    builtin = builtin_results(query, top_k=2, fallback=(not results))
-    seen = {r.get("title") for r in results}
-    results += [r for r in builtin if r.get("title") not in seen]
+    wiki = [r for r in wiki if _relevant(query, (r.get("title", "") + " " + r.get("snippet", "")))]
+    baidu = [r for r in baidu if _relevant(query, (r.get("title", "") + " " + r.get("snippet", "")))]
+    builtin = builtin_results(query, top_k=2, fallback=(not wiki and not baidu))
+    results: list[dict[str, Any]] = []
+    seen: set[str] = set()
+    for r in builtin + wiki + baidu:
+        title = r.get("title") or ""
+        if title in seen:
+            continue
+        seen.add(title)
+        results.append(r)
+    results = results[:top_k]
     answer = ""
     if results and with_answer and model is not None:
         answer = summarize(query, results, model)

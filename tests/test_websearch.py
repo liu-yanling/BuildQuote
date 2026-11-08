@@ -24,7 +24,8 @@ def test_search_merges_wiki_first(monkeypatch):
          "snippet": "混凝土是由凝胶材料、骨料和水配置成的复合材料。", "source": "维基百科"}])
     monkeypatch.setattr(websearch, "search_baidu", lambda q, top_k=5: [])
     out = websearch.search("混凝土是什么", top_k=5, model=None, with_answer=False)
-    assert out["results"][0]["source"] == "维基百科"
+    assert out["results"]
+    assert any(r["source"] == "维基百科" for r in out["results"])
 
 
 def test_web_system_prompt_requires_sources():
