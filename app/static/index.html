@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
 <title>BuildQuote · 成本监控工作台</title>
-<link rel="stylesheet" href="/static/style.css?v=0.8.0">
+<link rel="stylesheet" href="/static/style.css?v=0.9.0">
 </head>
 <body>
 <div class="layout">
@@ -23,7 +23,7 @@
 
     <div class="sidebar-foot">
       <div id="health" class="health"><span class="dot"></span>连接中…</div>
-      <div class="ver">v0.8.0 · 单进程单体</div>
+      <div class="ver">v0.9.0 · 单进程单体</div>
     </div>
   </aside>
 
@@ -97,7 +97,7 @@
 
       <div class="qa-grid">
         <div class="card chat-card">
-          <div class="card-head"><b>问答</b><span class="muted" id="qa-status"></span></div>
+          <div class="card-head"><b>问答</b><span class="muted" id="qa-status"></span><button class="btn-mini ghost-mini" onclick="clearChat()" title="清空当前对话">清空对话</button></div>
           <div id="chat" class="chat"></div>
           <div class="chat-input">
             <textarea id="qa-input" rows="2" placeholder="例如：钢材采购合同怎么付款、质保金怎么退？（回车发送，Shift+回车换行）" onkeydown="if(event.key==='Enter'&&!event.shiftKey){event.preventDefault();ask()}"></textarea>
@@ -106,13 +106,17 @@
         </div>
 
         <div class="card search-card">
-          <div class="card-head"><b>知识检索</b><span class="muted">只查依据，不调模型</span></div>
+          <div class="card-head">
+            <b><button id="web-toggle" class="web-toggle" onclick="toggleWebSearch()" title="开启联网搜索：查建筑行业通用知识（维基百科 / 百度）">🌐</button>知识检索</b>
+            <span class="muted" id="search-mode">本地知识库</span>
+          </div>
           <div class="search-box">
             <input id="search-input" type="text" placeholder="例如：质保金怎么退" onkeydown="if(event.key==='Enter')search()">
             <button class="btn ghost" onclick="search()">检索</button>
           </div>
           <div id="search-status" class="muted" style="min-height:18px"></div>
           <div id="hits" class="hits"></div>
+          <div id="search-history" class="search-history"></div>
         </div>
       </div>
     </section>
@@ -298,6 +302,6 @@
   </main>
 </div>
 
-<script src="/static/app.js?v=0.8.0"></script>
+<script src="/static/app.js?v=0.9.0"></script>
 </body>
 </html>

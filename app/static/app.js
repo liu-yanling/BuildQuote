@@ -347,7 +347,14 @@ function renderAnswer(text) {
   return paras.join('') || '<p>（空回答）</p>';
 }
 
-function addMsg(role, text, citations) {
+const CHAT_KEY = 'bq_chat_log';
+let CHAT_LOG = [];
+function chatSave(role, text, citations) {
+  CHAT_LOG.push({ role: role, text: text, citations: citations || [], at: _nowLocal() });
+  if (CHAT_LOG.length > 40) CHAT_LOG = CHAT_LOG.slice(-40);
+  try { localStorage.setItem(CHAT_KEY, JSON.stringify(CHAT_LOG)); } catch (e) { /* 忽略隐私模式 */ }
+}
+function addMsg(role, text, citations, restore) {
   const chat = document.getElementById('chat');
   const div = document.createElement('div');
   div.className = 'msg ' + role;
@@ -365,7 +372,23 @@ function addMsg(role, text, citations) {
   }
   chat.appendChild(div);
   chat.scrollTop = chat.scrollHeight;
+  if (!restore) chatSave(role, text, citations || []);
   return div;
+}
+/* 刷新页面后恢复历史对话（方便二次翻阅） */
+function restoreChat() {
+  try { CHAT_LOG = JSON.parse(localStorage.getItem(CHAT_KEY) || '[]') || []; } catch (e) { CHAT_LOG = []; }
+  if (!Array.isArray(CHAT_LOG) || !CHAT_LOG.length) return;
+  const chat = document.getElementById('chat');
+  if (!chat) return;
+  chat.innerHTML = '';
+  CHAT_LOG.forEach(m => addMsg(m.role, m.text, m.citations, true));
+}
+function clearChat() {
+  CHAT_LOG = [];
+  try { localStorage.removeItem(CHAT_KEY); } catch (e) { /* ignore */ }
+  const chat = document.getElementById('chat');
+  if (chat) chat.innerHTML = '';
 }
 
 async function ask() {
@@ -381,9 +404,67 @@ async function ask() {
   addMsg('assistant', d.answer || '(空回答)', d.citations || []);
 }
 
+/* 检索历史（本地保存，方便二次翻阅） */
+const SEARCH_HIST_KEY = 'bq_search_history';
+let SEARCH_HISTORY = [];
+function loadSearchHistory() {
+  try { SEARCH_HISTORY = JSON.parse(localStorage.getItem(SEARCH_HIST_KEY) || '[]') || []; } catch (e) { SEARCH_HISTORY = []; }
+  renderSearchHistory();
+}
+function saveSearchHistory(q, mode) {
+  SEARCH_HISTORY = (SEARCH_HISTORY || []).filter(it => !(it.q === q && it.mode === mode));
+  SEARCH_HISTORY.unshift({ q: q, mode: mode, at: _nowLocal() });
+  SEARCH_HISTORY = SEARCH_HISTORY.slice(0, 10);
+  try { localStorage.setItem(SEARCH_HIST_KEY, JSON.stringify(SEARCH_HISTORY)); } catch (e) { /* ignore */ }
+  renderSearchHistory();
+}
+function renderSearchHistory() {
+  const box = document.getElementById('search-history');
+  if (!box) return;
+  if (!SEARCH_HISTORY.length) { box.innerHTML = ''; return; }
+  const items = SEARCH_HISTORY.map(it =>
+    '<button class="hist-item" data-q="' + esc(it.q) + '" data-mode="' + esc(it.mode) + '" onclick="rerunSearch(this)">' +
+    '<span class="hm">' + (it.mode === 'web' ? '🌐' : '📚') + '</span>' + esc(it.q) +
+    '<span class="ht">' + esc(_fmtAt(it.at)) + '</span></button>').join('');
+  box.innerHTML = '<div class="hist-head"><b>最近检索</b><button class="btn-mini ghost-mini" onclick="clearSearchHistory()">清空</button></div>' +
+    '<div class="hist-list">' + items + '</div>';
+}
+function rerunSearch(el) {
+  const q = el.getAttribute('data-q') || '';
+  const mode = el.getAttribute('data-mode') || 'local';
+  if (mode === 'web' && !WEB_SEARCH) toggleWebSearch();
+  if (mode === 'local' && WEB_SEARCH) toggleWebSearch();
+  const input = document.getElementById('search-input');
+  input.value = q;
+  search();
+}
+function clearSearchHistory() {
+  SEARCH_HISTORY = [];
+  try { localStorage.removeItem(SEARCH_HIST_KEY); } catch (e) { /* ignore */ }
+  renderSearchHistory();
+}
+
+/* 联网搜索开关（知识检索前的 🌐 小图标） */
+let WEB_SEARCH = false;
+function toggleWebSearch() {
+  WEB_SEARCH = !WEB_SEARCH;
+  const btn = document.getElementById('web-toggle');
+  if (btn) {
+    btn.classList.toggle('active', WEB_SEARCH);
+    btn.title = WEB_SEARCH ? '联网搜索已开启（点击切回本地知识库）' : '开启联网搜索：查建筑行业通用知识（维基百科 / 百度）';
+  }
+  const mode = document.getElementById('search-mode');
+  if (mode) mode.textContent = WEB_SEARCH ? '联网搜索 · 维基百科 / 百度' : '本地知识库';
+  const input = document.getElementById('search-input');
+  if (input) input.placeholder = WEB_SEARCH
+    ? '联网搜索建筑行业知识，如：混凝土强度等级、钢筋理论重量'
+    : '例如：质保金怎么退';
+}
+
 async function search() {
   const q = document.getElementById('search-input').value.trim();
   if (!q) return;
+  if (WEB_SEARCH) return searchWeb(q);
   const st = document.getElementById('search-status');
   st.innerHTML = '<span class="spinner"></span>检索中…';
   const { ok, d } = await postJSON('/api/knowledge/search', { query: q, top_k: 5 });
@@ -397,6 +478,35 @@ async function search() {
     '<span class="score">score ' + (Number(h.score || 0).toFixed(3)) + '</span></div>' +
     '<div class="txt">' + esc(h.text || '') + '</div></div>'
   ).join('');
+  saveSearchHistory(q, 'local');
+}
+
+/* 联网搜索：建筑行业通用知识（结果与摘要均标注来源，仅供参考） */
+async function searchWeb(q) {
+  const st = document.getElementById('search-status');
+  const box = document.getElementById('hits');
+  st.innerHTML = '<span class="spinner"></span>联网搜索中…（维基百科 / 百度，约 2–5 秒）';
+  const { ok, d } = await postJSON('/api/web/search', { query: q, top_k: 5, answer: true });
+  st.innerHTML = '';
+  if (!ok) { box.innerHTML = '<div class="empty" style="padding:14px">错误：' + esc(errText(d)) + '</div>'; return; }
+  const results = d.results || [];
+  let html = '';
+  if (d.answer) {
+    html += '<div class="web-answer"><div class="cite-line">联网摘要 <span class="badge">DeepSeek 依据检索结果 · 仅供参考</span></div>' +
+      '<div class="txt">' + renderAnswer(d.answer) + '</div></div>';
+  }
+  if (!results.length) {
+    html += '<div class="empty" style="padding:14px">' + esc(d.note || '联网检索未返回结果，可换个说法再试。') + '</div>';
+  } else {
+    html += results.map((r, i) =>
+      '<div class="hit web-hit"><div class="cite-line">' + (i + 1) + '. ' +
+      (r.url ? '<a href="' + esc(r.url) + '" target="_blank" rel="noopener">' + esc(r.title) + '</a>' : esc(r.title)) +
+      '<span class="badge">' + esc(r.source || '网页') + '</span></div>' +
+      '<div class="txt">' + esc(r.snippet || '') + '</div></div>').join('');
+    st.innerHTML = '联网检索完成：' + results.length + ' 条公开结果';
+  }
+  box.innerHTML = html;
+  saveSearchHistory(q, 'web');
 }
 
 /* ===== ③ 询价比价五步 ===== */
@@ -1002,5 +1112,7 @@ document.addEventListener('DOMContentLoaded', () => {
   loadEvalLast();
   renderSuppliers();
   updateStepper(1);
+  restoreChat();
+  loadSearchHistory();
   checkHealth();
 });

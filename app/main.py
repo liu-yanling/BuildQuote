@@ -18,7 +18,7 @@ from pydantic import BaseModel
 
 from app import (cost_io, cost_rules, cost_tools, eval as eval_mod, export as export_mod,
                  permissions, prompts, quote_import, rules, scheduler, team as team_mod,
-                 tools, workflow)
+                 tools, websearch, workflow)
 from app.agent_loop import Harness
 from app.config import load_settings
 from app.embeddings import make_embedder
@@ -632,6 +632,25 @@ def qa_ask(payload: QaAskIn) -> dict:
 
     model = ModelClient(settings)
     return ask(payload.question, rag, model, top_k=payload.top_k)
+
+
+class WebSearchIn(BaseModel):
+    query: str
+    top_k: int = 5
+    answer: bool = True
+
+
+@app.post("/api/web/search")
+def web_search(payload: WebSearchIn) -> dict:
+    """联网检索（建筑行业通用知识）：维基百科 + 百度网页 + 内置知识兜底；可选 DeepSeek 联网摘要。"""
+    query = (payload.query or "").strip()
+    if not query:
+        raise HTTPException(status_code=400, detail="请输入检索内容")
+    if len(query) > 200:
+        raise HTTPException(status_code=400, detail="检索内容过长（限 200 字）")
+    top_k = max(1, min(int(payload.top_k or 5), 8))
+    model = ModelClient(settings) if payload.answer else None
+    return websearch.search(query, top_k=top_k, model=model, with_answer=payload.answer)
 
 
 def start_scheduler():
